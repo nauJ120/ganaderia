@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ganado Vecino — Ganado de fincas vecinas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root{
+    --bg:#F1E6D3;
+    --bg-card:#FFFDF7;
+    --ink:#2B2013;
+    --ink-soft:#6b5c47;
+    --green:#45573A;
+    --leather:#8C4A2F;
+    --leather-dark:#6e3a23;
+    --gold:#C98A2C;
+    --gold-dark:#a8721f;
+    --line:#D8C6A6;
+    --wood:#3B2E22;
+    --wood-dark:#241c14;
+    --danger:#a83232;
+    --radius-s:8px;
+    --radius-pill:999px;
+    --shadow-hover:0 10px 24px rgba(43,32,19,0.16);
+    --font-display:'Fraunces',Georgia,serif;
+    --font-body:'Karla',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{background:var(--bg);color:var(--ink);font-family:var(--font-body);line-height:1.55;-webkit-font-smoothing:antialiased;}
+  a{color:inherit;}
+  button{font-family:var(--font-body);}
+  img{max-width:100%;}
+
+  .nav{position:sticky;top:0;z-index:40;background:var(--wood);color:#F1E6D3;display:flex;align-items:center;justify-content:space-between;padding:0.75rem 1.5rem;flex-wrap:wrap;gap:0.75rem;}
+  .nav-brand{display:flex;align-items:center;gap:0.6rem;font-family:var(--font-display);font-size:1.3rem;font-weight:600;color:#F6EAD2;white-space:nowrap;}
+  .nav-links{display:flex;align-items:center;gap:1.4rem;flex-wrap:wrap;font-size:0.95rem;}
+  .nav-links a{color:#E4D6B8;text-decoration:none;cursor:pointer;padding:0.35rem 0;border-bottom:2px solid transparent;transition:border-color .15s;}
+  .nav-links a:hover, .nav-links a.active{border-color:var(--gold);color:#fff;}
+  .nav-user{display:flex;align-items:center;gap:0.75rem;font-size:0.88rem;color:#E4D6B8;}
+
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:0.4rem;font-weight:700;font-size:0.95rem;padding:0.65rem 1.4rem;border-radius:var(--radius-pill);border:2px solid transparent;cursor:pointer;transition:transform .12s, background .15s;text-decoration:none;}
+  .btn:active{transform:scale(0.97);}
+  .btn:disabled{opacity:0.6;cursor:default;}
+  .btn-primary{background:var(--gold);color:var(--wood-dark);}
+  .btn-primary:hover{background:var(--gold-dark);}
+  .btn-outline{background:transparent;border-color:var(--ink);color:var(--ink);}
+  .btn-outline:hover{background:var(--ink);color:var(--bg);}
+  .btn-danger{background:transparent;color:var(--danger);border:1px solid var(--danger);}
+  .btn-small{padding:0.42rem 0.95rem;font-size:0.82rem;border-radius:var(--radius-s);}
+
+  .hero{display:grid;grid-template-columns:1.1fr 0.9fr;gap:2.5rem;align-items:center;max-width:1180px;margin:0 auto;padding:3.2rem 1.5rem 2rem;}
+  @media (max-width:860px){.hero{grid-template-columns:1fr;padding-top:2rem;}}
+  .hero h1{font-family:var(--font-display);font-size:clamp(2rem,4.5vw,3.3rem);font-weight:600;line-height:1.1;margin:0 0 1rem;color:var(--wood-dark);}
+  .hero .sub{font-size:1.05rem;color:var(--ink-soft);max-width:46ch;margin:0 0 1.75rem;}
+  .hero-actions{display:flex;gap:0.9rem;flex-wrap:wrap;}
+  .hero-art{width:100%;height:auto;display:block;}
+
+  .stats{background:var(--green);color:#EFE9DA;padding:1rem 1.5rem;}
+  .stats-inner{max-width:1180px;margin:0 auto;display:flex;gap:2.5rem;flex-wrap:wrap;justify-content:center;}
+  .stats b{font-family:var(--font-display);font-size:1.35rem;margin-right:0.4rem;color:var(--gold);}
+  .stats span{font-size:0.82rem;color:#D9D2BE;}
+
+  .section{max-width:1180px;margin:0 auto;padding:2rem 1.5rem;}
+  .section-header{display:flex;align-items:baseline;justify-content:space-between;flex-wrap:wrap;gap:0.75rem;margin-bottom:1.25rem;}
+  .section-header h2{font-family:var(--font-display);font-size:1.6rem;font-weight:600;margin:0;color:var(--wood-dark);}
+
+  .filters{background:var(--bg-card);border:1px solid var(--line);border-radius:var(--radius-s);padding:1.25rem;margin-bottom:1.75rem;}
+  .filters-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:0.9rem;}
+  .field label{display:block;font-size:0.78rem;color:var(--ink-soft);margin-bottom:0.3rem;}
+  .field input, .field select{width:100%;padding:0.5rem 0.6rem;border:1px solid var(--line);border-radius:6px;font-family:var(--font-body);font-size:0.9rem;background:#fff;color:var(--ink);}
+  .filters-actions{display:flex;gap:0.75rem;margin-top:1rem;flex-wrap:wrap;align-items:center;}
+  .checkbox-row{display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;color:var(--ink-soft);}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:1.4rem;}
+  .card{background:var(--bg-card);border:1px solid var(--line);border-left:4px solid var(--leather);border-radius:var(--radius-s);overflow:hidden;cursor:pointer;transition:transform .15s, box-shadow .15s;position:relative;}
+  .card:hover{transform:translateY(-3px);box-shadow:var(--shadow-hover);}
+  .card-photo{height:170px;width:100%;object-fit:cover;display:block;background:#e7dcc4;}
+  .card-photo-placeholder{height:170px;width:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#e7dcc4,#d9c9a3);}
+  .card-badge{position:absolute;top:0.6rem;left:0.6rem;background:var(--gold);color:var(--wood-dark);font-size:0.68rem;font-weight:700;padding:0.15rem 0.55rem;border-radius:var(--radius-pill);}
+  .card-sold-ribbon{position:absolute;top:0.7rem;right:-2.1rem;background:var(--danger);color:#fff;font-size:0.68rem;font-weight:700;padding:0.25rem 2.3rem;transform:rotate(35deg);}
+  .card-body{padding:0.9rem 1rem 1.1rem;}
+  .card-body h3{font-family:var(--font-display);font-size:1.12rem;margin:0 0 0.2rem;color:var(--wood-dark);}
+  .card-meta{font-size:0.83rem;color:var(--ink-soft);margin-bottom:0.5rem;}
+  .card-price{font-family:var(--font-display);font-size:1.15rem;font-weight:700;color:var(--leather-dark);}
+  .card-farm{font-size:0.76rem;color:var(--ink-soft);margin-top:0.5rem;}
+  .fav-btn{position:absolute;top:0.6rem;right:0.6rem;width:32px;height:32px;border-radius:50%;background:rgba(255,253,247,0.9);border:1px solid var(--line);font-size:1.05rem;line-height:1;cursor:pointer;color:var(--leather-dark);display:flex;align-items:center;justify-content:center;}
+  .fav-btn.active{color:var(--danger);border-color:var(--danger);}
+  .role-toggle{display:flex;gap:0.6rem;margin-bottom:1.1rem;flex-wrap:wrap;}
+  .gate-box{background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:1rem;}
+  .gate-box p{margin:0 0 0.8rem;font-size:0.92rem;}
+  .hint{font-size:0.76rem;color:var(--ink-soft);margin-top:0.25rem;}
+
+  .map-wrap{max-width:1180px;margin:0 auto;padding:1.5rem;}
+  #mainMap{height:65vh;min-height:380px;border-radius:var(--radius-s);border:1px solid var(--line);}
+
+  .overlay{position:fixed;inset:0;background:rgba(43,32,19,0.72);display:flex;align-items:flex-start;justify-content:center;padding:2rem 1rem;overflow-y:auto;z-index:100;}
+  .modal{background:var(--bg-card);border-radius:12px;max-width:640px;width:100%;padding:1.75rem;position:relative;margin:auto 0;}
+  .modal-close{position:absolute;top:0.9rem;right:1rem;background:none;border:none;font-size:1.5rem;cursor:pointer;color:var(--ink-soft);line-height:1;}
+  .modal h2{font-family:var(--font-display);margin-top:0;color:var(--wood-dark);}
+  .form-row{margin-bottom:0.9rem;}
+  .form-row label{display:block;font-size:0.82rem;color:var(--ink-soft);margin-bottom:0.3rem;font-weight:600;}
+  .form-row input, .form-row select, .form-row textarea{width:100%;padding:0.6rem 0.7rem;border:1px solid var(--line);border-radius:6px;font-family:var(--font-body);font-size:0.95rem;background:#fff;}
+  .form-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:0.9rem;}
+  @media (max-width:500px){.form-grid-2{grid-template-columns:1fr;}}
+  .error-text{color:var(--danger);font-size:0.85rem;margin:0.5rem 0;}
+  #formMap, #detailMap{width:100%;border-radius:8px;margin-top:0.4rem;border:1px solid var(--line);}
+  #formMap{height:200px;}
+  #detailMap{height:150px;}
+  .photo-preview{display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.6rem;}
+  .photo-thumb{position:relative;width:68px;height:68px;border-radius:6px;overflow:hidden;border:1px solid var(--line);}
+  .photo-thumb img{width:100%;height:100%;object-fit:cover;}
+  .photo-thumb button{position:absolute;top:1px;right:1px;background:rgba(43,32,19,0.75);color:#fff;border:none;width:18px;height:18px;border-radius:50%;font-size:0.7rem;cursor:pointer;line-height:1;}
+
+  .detail-gallery{position:relative;height:250px;border-radius:8px;overflow:hidden;background:#e7dcc4;margin-bottom:1.1rem;}
+  .detail-gallery img{width:100%;height:100%;object-fit:cover;}
+  .gallery-nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(43,32,19,0.55);color:#fff;border:none;width:34px;height:34px;border-radius:50%;cursor:pointer;font-size:1.1rem;}
+  .gallery-nav.prev{left:0.6rem;}
+  .gallery-nav.next{right:0.6rem;}
+  .spec-list{display:grid;grid-template-columns:1fr 1fr;gap:0.5rem 1.2rem;margin:1rem 0;font-size:0.92rem;}
+  .spec-list div span{display:block;font-size:0.74rem;color:var(--ink-soft);}
+  .farm-box{border-top:1px solid var(--line);margin-top:1.2rem;padding-top:1.1rem;}
+
+  .dash-farm-card{background:var(--bg-card);border:1px solid var(--line);border-radius:var(--radius-s);padding:1.2rem 1.4rem;margin-bottom:1.5rem;display:flex;justify-content:space-between;flex-wrap:wrap;gap:1rem;align-items:center;}
+  .dash-card-actions{display:flex;gap:0.5rem;padding:0.6rem 0.2rem 0;flex-wrap:wrap;}
+
+  .footer{background:var(--wood-dark);color:#C9BC9E;text-align:center;padding:1.75rem 1rem;font-size:0.85rem;margin-top:2rem;}
+  .empty{text-align:center;padding:2.5rem 1rem;color:var(--ink-soft);}
+  .boot{padding:4rem;text-align:center;color:#6b5c47;}
+</style>
+</head>
+<body>
+<div id="app"><div class="boot">Cargando…</div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+/* =============== Conexión a Supabase =============== */
+const SUPABASE_URL = 'https://iwgjaitvrxwxbflgzdlk.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_RNhnyIAkDZLvcZJrdAs6_g_TZG83CR7';
+const EMAIL_DOMAIN = 'ganadovecino.app';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* ---------- Iconos / arte SVG ---------- */
+const cowIconSVG = `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><circle cx="14" cy="14" r="14" fill="#C98A2C"/><circle cx="10" cy="12" r="2.1" fill="#3B2E22"/><circle cx="18" cy="12" r="2.1" fill="#3B2E22"/><path d="M8 17c1.5 2 4 3 6 3s4.5-1 6-3" stroke="#3B2E22" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>`;
+const miniCowSVG = `<svg width="54" height="54" viewBox="0 0 54 54" xmlns="http://www.w3.org/2000/svg"><circle cx="27" cy="27" r="27" fill="#d9c9a3"/><circle cx="19" cy="24" r="4" fill="#8C4A2F"/><circle cx="35" cy="24" r="4" fill="#8C4A2F"/><path d="M14 34c3 4 8 6 13 6s10-2 13-6" stroke="#8C4A2F" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>`;
+const heroArtSVG = `<svg class="hero-art" viewBox="0 0 600 440" xmlns="http://www.w3.org/2000/svg">
+  <rect width="600" height="440" rx="18" fill="#EFE1C4"/>
+  <circle cx="470" cy="90" r="46" fill="#C98A2C"/>
+  <path d="M0 300 Q150 230 300 290 T600 270 V440 H0 Z" fill="#5C7048"/>
+  <path d="M0 340 Q160 290 320 330 T600 320 V440 H0 Z" fill="#45573A"/>
+  <path d="M0 380 Q180 350 340 375 T600 370 V440 H0 Z" fill="#2E3B26"/>
+  <g transform="translate(70,220)">
+    <polygon points="0,60 60,10 120,60" fill="#6e3a23"/>
+    <rect x="10" y="60" width="100" height="72" fill="#8C4A2F"/>
+    <rect x="45" y="97" width="30" height="35" fill="#2B2013"/>
+    <polygon points="50,10 60,0 70,10" fill="#C98A2C"/>
+  </g>
+  <g transform="translate(330,320)">
+    <ellipse cx="60" cy="55" rx="55" ry="34" fill="#2B2013"/>
+    <circle cx="18" cy="35" r="22" fill="#2B2013"/>
+    <ellipse cx="10" cy="40" rx="7" ry="5" fill="#F1E6D3"/>
+    <rect x="20" y="80" width="8" height="22" fill="#2B2013"/>
+    <rect x="45" y="85" width="8" height="22" fill="#2B2013"/>
+    <rect x="75" y="85" width="8" height="22" fill="#2B2013"/>
+    <rect x="100" y="80" width="8" height="22" fill="#2B2013"/>
+    <circle cx="70" cy="45" r="7" fill="#F1E6D3"/>
+    <circle cx="95" cy="40" r="9" fill="#F1E6D3"/>
+  </g>
+</svg>`;
+
+/* ---------- Utilidades ---------- */
+function esc(s){
+  if(s===undefined||s===null) return '';
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function genId(){ return 'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function defaultFilters(){ return {q:'',breed:'',sex:'',minAge:'',maxAge:'',minWeight:'',maxWeight:'',maxPrice:'',onlyAvailable:true}; }
+function resizeImageToBlob(file){
+  return new Promise((resolve,reject)=>{
+    const reader = new FileReader();
+    reader.onload = e => {
+      const img = new Image();
+      img.onload = () => {
+        const maxDim = 1000;
+        let w = img.width, h = img.height;
+        if (w >= h && w > maxDim){ h = Math.round(h*maxDim/w); w = maxDim; }
+        else if (h > w && h > maxDim){ w = Math.round(w*maxDim/h); h = maxDim; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img,0,0,w,h);
+        canvas.toBlob(blob=>resolve(blob), 'image/jpeg', 0.78);
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+async function uploadPhoto(file, userId){
+  const blob = await resizeImageToBlob(file);
+  const path = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+  const {error} = await sb.storage.from('cattle-photos').upload(path, blob, {contentType:'image/jpeg'});
+  if(error) throw error;
+  const {data} = sb.storage.from('cattle-photos').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+/* ---------- Estado ---------- */
+let state = {
+  view:'explore', modal:null, editingId:null, selectedId:null, detailPhotoIndex:0,
+  filters: defaultFilters(), cattle:[], profiles:{}, contactsCache:{}, favorites:[],
+  currentUser:null, formLatLng:{lat:4.5709,lng:-74.2973}, error:'',
+  registerRole:'vendedor', registerDraft:{}, loading:true, busy:false
+};
+let pendingExistingPhotoUrls = [];
+let pendingNewPhotoFiles = [];
+let mainMapInstance=null, formMapInstance=null, detailMapInstance=null;
+
+/* ---------- Datos ---------- */
+async function loadPublicData(){
+  const [{data:cattleRows}, {data:profileRows}] = await Promise.all([
+    sb.from('cattle').select('*').order('created_at', {ascending:false}),
+    sb.from('profiles').select('*')
+  ]);
+  state.cattle = cattleRows || [];
+  state.profiles = {};
+  (profileRows||[]).forEach(p=>{ state.profiles[p.id] = p; });
+}
+async function loadSession(){
+  const {data:{session}} = await sb.auth.getSession();
+  if(!session){ state.currentUser=null; state.favorites=[]; return; }
+  const {data:profile} = await sb.from('profiles').select('*').eq('id', session.user.id).maybeSingle();
+  if(!profile){ state.currentUser=null; return; }
+  let phone='';
+  try{
+    const {data:contact} = await sb.from('contacts').select('phone').eq('user_id', session.user.id).maybeSingle();
+    phone = contact ? (contact.phone||'') : '';
+  }catch(e){}
+  state.currentUser = {...profile, phone};
+  if(profile.role==='comprador'){
+    const {data:favRows} = await sb.from('favorites').select('cattle_id').eq('user_id', session.user.id);
+    state.favorites = (favRows||[]).map(f=>f.cattle_id);
+  } else {
+    state.favorites = [];
+  }
+}
+async function getOwnerPhone(ownerId){
+  if(state.contactsCache[ownerId] !== undefined) return state.contactsCache[ownerId];
+  try{
+    const {data} = await sb.from('contacts').select('phone').eq('user_id', ownerId).maybeSingle();
+    state.contactsCache[ownerId] = data ? (data.phone||'') : '';
+  }catch(e){ state.contactsCache[ownerId] = ''; }
+  return state.contactsCache[ownerId];
+}
+function getCattleById(id){ return state.cattle.find(c=>String(c.id)===String(id)); }
+function getFilteredCattle(){
+  return state.cattle.filter(c=>{
+    const f = state.filters;
+    if(f.onlyAvailable && c.status!=='disponible') return false;
+    if(f.breed && c.breed!==f.breed) return false;
+    if(f.sex && c.sex!==f.sex) return false;
+    if(f.minAge!=='' && c.age_months < Number(f.minAge)) return false;
+    if(f.maxAge!=='' && c.age_months > Number(f.maxAge)) return false;
+    if(f.minWeight!=='' && c.weight_kg < Number(f.minWeight)) return false;
+    if(f.maxWeight!=='' && c.weight_kg > Number(f.maxWeight)) return false;
+    if(f.maxPrice!=='' && c.price && c.price > Number(f.maxPrice)) return false;
+    if(f.q){
+      const hay = `${c.name} ${c.breed} ${c.genetic_line||''} ${c.registro||''}`.toLowerCase();
+      if(!hay.includes(f.q)) return false;
+    }
+    return true;
+  });
+}
+
+/* ---------- Render ---------- */
+function renderNav(){
+  const cu = state.currentUser;
+  const dashLabel = cu ? (cu.role==='vendedor' ? 'Mi finca' : 'Mi cuenta') : 'Mi cuenta';
+  return `<nav class="nav">
+    <div class="nav-brand">${cowIconSVG} Ganado Vecino</div>
+    <div class="nav-links">
+      <a class="${state.view==='explore'?'active':''}" onclick="setView('explore')">Explorar</a>
+      <a class="${state.view==='map'?'active':''}" onclick="setView('map')">Mapa</a>
+      <a class="${state.view==='dashboard'?'active':''}" onclick="goDashboard()">${dashLabel}</a>
+    </div>
+    <div class="nav-user">
+      ${cu
+        ? `<span>${esc(cu.display_name)}</span><button class="btn btn-outline btn-small" onclick="logout()">Salir</button>`
+        : `<button class="btn btn-primary btn-small" onclick="openLogin()">Ingresar</button>`}
+    </div>
+  </nav>`;
+}
+function renderHero(){
+  const totalAnimales = state.cattle.filter(c=>c.status==='disponible').length;
+  const totalFincas = new Set(state.cattle.map(c=>c.owner_id)).size;
+  return `<section class="hero">
+    <div>
+      <h1>El ganado de las fincas vecinas, a un clic de distancia</h1>
+      <p class="sub">Publica tus animales con peso, edad, línea genética y registro. Los ganaderos de la región los ven, los comparan y te contactan directo.</p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#filtersSection">Ver el ganado disponible</a>
+        <button class="btn btn-outline" onclick="goPublish()">Publicar mi ganado</button>
+      </div>
+    </div>
+    <div>${heroArtSVG}</div>
+  </section>
+  <div class="stats"><div class="stats-inner">
+    <div><b>${totalAnimales}</b><span>animales disponibles</span></div>
+    <div><b>${totalFincas}</b><span>fincas publicando</span></div>
+  </div></div>`;
+}
+function renderFilters(){
+  const breeds = Array.from(new Set(state.cattle.map(c=>c.breed).filter(Boolean))).sort();
+  const f = state.filters;
+  return `<div class="filters" id="filtersSection">
+    <div class="filters-grid">
+      <div class="field"><label>Buscar (raza, línea, arete)</label><input id="f-q" value="${esc(f.q)}" placeholder="ej. Brahman rojo"></div>
+      <div class="field"><label>Raza</label><select id="f-breed">
+        <option value="">Todas</option>
+        ${breeds.map(b=>`<option value="${esc(b)}" ${f.breed===b?'selected':''}>${esc(b)}</option>`).join('')}
+      </select></div>
+      <div class="field"><label>Sexo</label><select id="f-sex">
+        <option value="">Todos</option>
+        <option value="Macho" ${f.sex==='Macho'?'selected':''}>Macho</option>
+        <option value="Hembra" ${f.sex==='Hembra'?'selected':''}>Hembra</option>
+      </select></div>
+      <div class="field"><label>Edad mín. (meses)</label><input type="number" id="f-minAge" value="${f.minAge}" min="0"></div>
+      <div class="field"><label>Edad máx. (meses)</label><input type="number" id="f-maxAge" value="${f.maxAge}" min="0"></div>
+      <div class="field"><label>Peso mín. (kg)</label><input type="number" id="f-minWeight" value="${f.minWeight}" min="0"></div>
+      <div class="field"><label>Peso máx. (kg)</label><input type="number" id="f-maxWeight" value="${f.maxWeight}" min="0"></div>
+      <div class="field"><label>Precio máx. (COP)</label><input type="number" id="f-maxPrice" value="${f.maxPrice}" min="0"></div>
+    </div>
+    <div class="filters-actions">
+      <button class="btn btn-primary btn-small" onclick="applyFilters()">Aplicar filtros</button>
+      <button class="btn btn-outline btn-small" onclick="clearFilters()">Limpiar</button>
+      <button class="btn btn-outline btn-small" onclick="refreshData()">↻ Actualizar</button>
+      <label class="checkbox-row"><input type="checkbox" id="f-onlyAvailable" ${f.onlyAvailable?'checked':''}> Solo disponibles</label>
+    </div>
+  </div>`;
+}
+function renderCard(c){
+  const owner = state.profiles[c.owner_id];
+  const photo = c.photos && c.photos[0];
+  const cu = state.currentUser;
+  const isBuyer = cu && cu.role==='comprador';
+  const isFav = isBuyer && state.favorites.includes(c.id);
+  return `<div class="card" onclick="viewDetail('${c.id}')">
+    ${photo ? `<img class="card-photo" src="${photo}" alt="${esc(c.name)}" loading="lazy">` : `<div class="card-photo-placeholder">${miniCowSVG}</div>`}
+    ${isBuyer ? `<button class="fav-btn ${isFav?'active':''}" onclick="event.stopPropagation();toggleFavorite('${c.id}')">${isFav?'♥':'♡'}</button>` : ''}
+    ${c.status==='vendido' ? `<span class="card-sold-ribbon">Vendido</span>` : ''}
+    <div class="card-body">
+      <h3>${esc(c.name)}</h3>
+      <div class="card-meta">${esc(c.breed)} · ${esc(c.sex)} · ${c.age_months} meses · ${c.weight_kg} kg</div>
+      <div class="card-price">${c.price ? '$'+Number(c.price).toLocaleString('es-CO') : 'Precio a convenir'}</div>
+      <div class="card-farm">📍 ${owner?esc(owner.display_name):'Finca'} — ${owner?esc(owner.city||''):''}</div>
+    </div>
+  </div>`;
+}
+function renderGrid(){
+  const list = getFilteredCattle();
+  if(list.length===0) return `<div class="empty">No hay animales que coincidan con esos filtros todavía.</div>`;
+  return `<div class="grid">${list.map(renderCard).join('')}</div>`;
+}
+function renderMapView(){
+  return `<div class="map-wrap">
+    <div class="section-header"><h2>Fincas en el mapa</h2><button class="btn btn-outline btn-small" onclick="refreshData()">↻ Actualizar</button></div>
+    <div id="mainMap"></div>
+  </div>`;
+}
+function renderDashboard(){
+  const u = state.currentUser;
+  return u.role==='vendedor' ? renderSellerDashboard(u) : renderBuyerDashboard(u);
+}
+function renderSellerDashboard(u){
+  const mine = state.cattle.filter(c=>c.owner_id===u.id);
+  return `<div class="section">
+    <div class="dash-farm-card">
+      <div>
+        <h2 style="font-family:var(--font-display);margin:0 0 0.3rem;color:var(--wood-dark);">${esc(u.display_name)}</h2>
+        <div style="color:var(--ink-soft);font-size:0.9rem;">Cuenta de vendedor · ${esc(u.city||'')}${u.phone?' · '+esc(u.phone):''}</div>
+      </div>
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-small" onclick="openEditProfile()">Editar datos</button>
+        <button class="btn btn-primary btn-small" onclick="openAddCattle()">+ Agregar animal</button>
+      </div>
+    </div>
+    ${mine.length===0 ? `<div class="empty">Todavía no has publicado ningún animal. Usa "+ Agregar animal" para empezar.</div>` : `
+    <div class="grid">
+      ${mine.map(c=>`<div>${renderCard(c)}
+        <div class="dash-card-actions">
+          <button class="btn btn-outline btn-small" onclick="editCattlePrompt('${c.id}')">Editar</button>
+          <button class="btn btn-outline btn-small" onclick="toggleStatus('${c.id}')">${c.status==='disponible'?'Marcar vendido':'Marcar disponible'}</button>
+          <button class="btn btn-danger btn-small" onclick="deleteCattle('${c.id}')">Eliminar</button>
+        </div></div>`).join('')}
+    </div>`}
+  </div>`;
+}
+function renderBuyerDashboard(u){
+  const favCattle = state.cattle.filter(c=>state.favorites.includes(c.id));
+  return `<div class="section">
+    <div class="dash-farm-card">
+      <div>
+        <h2 style="font-family:var(--font-display);margin:0 0 0.3rem;color:var(--wood-dark);">${esc(u.display_name)}</h2>
+        <div style="color:var(--ink-soft);font-size:0.9rem;">Cuenta de comprador${u.city?' · '+esc(u.city):''}${u.phone?' · '+esc(u.phone):''}</div>
+      </div>
+      <button class="btn btn-outline btn-small" onclick="openEditProfile()">Editar datos</button>
+    </div>
+    <div class="section-header"><h2>Mis favoritos</h2></div>
+    ${favCattle.length===0 ? `<div class="empty">Aún no has guardado animales. Toca el ♡ en cualquier animal para guardarlo aquí.</div>` : `<div class="grid">${favCattle.map(renderCard).join('')}</div>`}
+  </div>`;
+}
+function renderPhotoPreview(){
+  const existing = pendingExistingPhotoUrls.map((url,i)=>`<div class="photo-thumb"><img src="${url}"><button type="button" onclick="removeExistingPhoto(${i})">×</button></div>`).join('');
+  const fresh = pendingNewPhotoFiles.map((f)=>`<div class="photo-thumb"><img src="${URL.createObjectURL(f)}"></div>`).join('');
+  return existing + fresh;
+}
+function loginModalHtml(){
+  return `<h2>Ingresar</h2>
+    ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
+    <form onsubmit="return handleLogin(event)">
+      <div class="form-row"><label>Usuario</label><input id="login-username" required></div>
+      <div class="form-row"><label>Contraseña</label><input id="login-password" type="password" required></div>
+      <button class="btn btn-primary" type="submit" style="width:100%;" ${state.busy?'disabled':''}>${state.busy?'Entrando…':'Ingresar'}</button>
+    </form>
+    <p style="text-align:center;margin-top:1rem;font-size:0.9rem;">¿No tienes cuenta? <a href="#" onclick="event.preventDefault();openRegister()" style="color:var(--leather-dark);font-weight:700;">Regístrate</a></p>`;
+}
+function registerModalHtml(){
+  const role = state.registerRole || 'vendedor';
+  const d = state.registerDraft || {};
+  return `<h2>Crear cuenta</h2>
+    <div class="role-toggle">
+      <button type="button" class="btn ${role==='vendedor'?'btn-primary':'btn-outline'} btn-small" onclick="setRegisterRole('vendedor')">Soy vendedor (finca)</button>
+      <button type="button" class="btn ${role==='comprador'?'btn-primary':'btn-outline'} btn-small" onclick="setRegisterRole('comprador')">Soy comprador</button>
+    </div>
+    ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
+    <form onsubmit="return handleRegister(event)">
+      <div class="form-grid-2">
+        <div class="form-row"><label>Nombre de usuario</label><input id="reg-username" value="${esc(d['reg-username']||'')}" required>
+          <div class="hint">Solo letras/números, sin espacios ni tildes.</div>
+        </div>
+        <div class="form-row"><label>Contraseña</label><input id="reg-password" type="password" value="${esc(d['reg-password']||'')}" required>
+          <div class="hint">Mínimo 6 caracteres.</div>
+        </div>
+      </div>
+      ${role==='vendedor' ? `
+      <div class="form-row"><label>Nombre de la finca</label><input id="reg-farmname" value="${esc(d['reg-farmname']||'')}" required></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label>Teléfono / WhatsApp</label><input id="reg-phone" value="${esc(d['reg-phone']||'')}" placeholder="57300..."></div>
+        <div class="form-row"><label>Vereda / Municipio</label><input id="reg-city" value="${esc(d['reg-city']||'')}"></div>
+      </div>
+      <div class="form-row"><label>Ubicación de la finca (toca el mapa para marcarla)</label><div id="formMap"></div></div>
+      ` : `
+      <div class="form-row"><label>Nombre completo</label><input id="reg-name" value="${esc(d['reg-name']||'')}" required></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label>Teléfono / WhatsApp</label><input id="reg-phone" value="${esc(d['reg-phone']||'')}" placeholder="57300..."></div>
+        <div class="form-row"><label>Ciudad / Municipio</label><input id="reg-city" value="${esc(d['reg-city']||'')}"></div>
+      </div>
+      `}
+      <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;" ${state.busy?'disabled':''}>${state.busy?'Creando cuenta…':'Crear cuenta'}</button>
+    </form>
+    <p style="text-align:center;margin-top:1rem;font-size:0.9rem;">¿Ya tienes cuenta? <a href="#" onclick="event.preventDefault();openLogin()" style="color:var(--leather-dark);font-weight:700;">Ingresa</a></p>`;
+}
+function editProfileModalHtml(){
+  const u = state.currentUser;
+  if(u.role==='vendedor'){
+    return `<h2>Editar datos de mi finca</h2>
+      ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
+      <form onsubmit="return handleEditProfile(event)">
+        <div class="form-row"><label>Nombre de la finca</label><input id="ef-farmname" value="${esc(u.display_name)}" required></div>
+        <div class="form-grid-2">
+          <div class="form-row"><label>Teléfono / WhatsApp</label><input id="ef-phone" value="${esc(u.phone||'')}"></div>
+          <div class="form-row"><label>Vereda / Municipio</label><input id="ef-city" value="${esc(u.city||'')}"></div>
+        </div>
+        <div class="form-row"><label>Ubicación (toca el mapa para ajustarla)</label><div id="formMap"></div></div>
+        <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;">Guardar cambios</button>
+      </form>`;
+  }
+  return `<h2>Editar mis datos</h2>
+    ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
+    <form onsubmit="return handleEditProfile(event)">
+      <div class="form-row"><label>Nombre completo</label><input id="ef-name" value="${esc(u.display_name||'')}" required></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label>Teléfono / WhatsApp</label><input id="ef-phone" value="${esc(u.phone||'')}"></div>
+        <div class="form-row"><label>Ciudad / Municipio</label><input id="ef-city" value="${esc(u.city||'')}"></div>
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;">Guardar cambios</button>
+    </form>`;
+}
+function addCattleModalHtml(){
+  const c = state.editingId ? getCattleById(state.editingId) : null;
+  return `<h2>${c?'Editar animal':'Agregar animal'}</h2>
+    ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
+    <form onsubmit="return handleSaveCattle(event)">
+      <div class="form-grid-2">
+        <div class="form-row"><label>Nombre o arete</label><input id="c-name" value="${c?esc(c.name):''}" required></div>
+        <div class="form-row"><label>Raza</label><input id="c-breed" list="breedList" value="${c?esc(c.breed):''}" required>
+          <datalist id="breedList">
+            <option value="Brahman"><option value="Angus"><option value="Normando"><option value="Cebú"><option value="Holstein"><option value="Simmental"><option value="Romosinuano"><option value="Blanco Orejinegro"><option value="Gyr"><option value="Charolais"><option value="Brangus">
+          </datalist>
+        </div>
+      </div>
+      <div class="form-row"><label>Línea genética</label><input id="c-line" value="${c?esc(c.genetic_line||''):''}" placeholder="ej. F1 Angus x Brahman"></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label>Sexo</label><select id="c-sex">
+          <option value="Hembra" ${c&&c.sex==='Hembra'?'selected':''}>Hembra</option>
+          <option value="Macho" ${c&&c.sex==='Macho'?'selected':''}>Macho</option>
+        </select></div>
+        <div class="form-row"><label>Estado</label><select id="c-status">
+          <option value="disponible" ${!c||c.status==='disponible'?'selected':''}>Disponible</option>
+          <option value="vendido" ${c&&c.status==='vendido'?'selected':''}>Vendido</option>
+        </select></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row"><label>Edad (meses)</label><input type="number" id="c-age" min="0" value="${c?c.age_months:''}" required></div>
+        <div class="form-row"><label>Peso (kg)</label><input type="number" id="c-weight" min="0" value="${c?c.weight_kg:''}" required></div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row"><label>Registro / Hierro (opcional)</label><input id="c-registro" value="${c?esc(c.registro||''):''}"></div>
+        <div class="form-row"><label>Precio en COP (opcional)</label><input type="number" id="c-price" min="0" value="${c&&c.price?c.price:''}"></div>
+      </div>
+      <div class="form-row"><label>Descripción</label><textarea id="c-desc" rows="3">${c?esc(c.description||''):''}</textarea></div>
+      <div class="form-row">
+        <label>Fotos (máx. 4)</label>
+        <input type="file" id="c-photos" accept="image/*" multiple onchange="handleImageUpload(event)">
+        <div class="photo-preview" id="photoPreview">${renderPhotoPreview()}</div>
+      </div>
+      <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;" ${state.busy?'disabled':''}>${state.busy?'Guardando…':(c?'Guardar cambios':'Publicar animal')}</button>
+    </form>`;
+}
+function detailModalHtml(){
+  const c = getCattleById(state.selectedId);
+  if(!c) return '<p>No se encontró el animal.</p>';
+  const owner = state.profiles[c.owner_id];
+  const photos = (c.photos && c.photos.length) ? c.photos : null;
+  const idx = state.detailPhotoIndex||0;
+  const cu = state.currentUser;
+  let actionSection;
+  if(cu && c.owner_id===cu.id){
+    actionSection = `<p style="color:var(--ink-soft);font-size:0.9rem;">Este animal es tuyo. <a href="#" onclick="event.preventDefault();goDashboard()" style="color:var(--leather-dark);font-weight:700;">Ir a Mi finca</a> para editarlo.</p>`;
+  } else if(!cu){
+    actionSection = `<div class="gate-box">
+      <p>Crea una cuenta de comprador para contactar al vendedor y ver sus datos de contacto.</p>
+      <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+        <button class="btn btn-primary btn-small" onclick="openRegister('comprador')">Crear cuenta de comprador</button>
+        <button class="btn btn-outline btn-small" onclick="openLogin()">Ya tengo cuenta</button>
+      </div>
+    </div>`;
+  } else if(cu.role!=='comprador'){
+    actionSection = `<div class="gate-box">
+      <p>Contactar para comprar está disponible solo con una cuenta de comprador.</p>
+      <button class="btn btn-primary btn-small" onclick="openRegister('comprador')">Crear cuenta de comprador</button>
+    </div>`;
+  } else {
+    const isFav = state.favorites.includes(c.id);
+    const phone = state.contactsCache[c.owner_id];
+    let contactHtml;
+    if(phone===undefined) contactHtml = `<span style="color:var(--ink-soft);font-size:0.85rem;">Cargando contacto…</span>`;
+    else if(phone) contactHtml = `<a class="btn btn-primary btn-small" target="_blank" rel="noopener" href="https://wa.me/${phone.replace(/\D/g,'')}">Contactar por WhatsApp</a>`;
+    else contactHtml = `<span style="color:var(--ink-soft);font-size:0.85rem;">El vendedor no registró teléfono.</span>`;
+    actionSection = `<div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:center;">
+      ${contactHtml}
+      <button class="btn btn-outline btn-small" onclick="toggleFavorite('${c.id}')">${isFav?'♥ Guardado':'♡ Guardar'}</button>
+    </div>`;
+  }
+  return `<div class="detail-gallery">
+      ${photos ? `<img src="${photos[idx]}">${photos.length>1?`<button class="gallery-nav prev" onclick="changeDetailPhoto(-1)">‹</button><button class="gallery-nav next" onclick="changeDetailPhoto(1)">›</button>`:''}`
+        : `<div style="display:flex;align-items:center;justify-content:center;height:100%;">${miniCowSVG}</div>`}
+    </div>
+    <h2 style="margin-bottom:0.1rem;">${esc(c.name)}</h2>
+    <div style="color:var(--ink-soft);margin-bottom:0.4rem;">${esc(c.breed)}${c.genetic_line?' · '+esc(c.genetic_line):''}</div>
+    <div class="card-price" style="font-size:1.35rem;">${c.price?'$'+Number(c.price).toLocaleString('es-CO'):'Precio a convenir'}</div>
+    <div class="spec-list">
+      <div><span>Sexo</span>${esc(c.sex)}</div>
+      <div><span>Edad</span>${c.age_months} meses</div>
+      <div><span>Peso</span>${c.weight_kg} kg</div>
+      <div><span>Registro</span>${c.registro?esc(c.registro):'—'}</div>
+      <div><span>Estado</span>${c.status==='disponible'?'Disponible':'Vendido'}</div>
+    </div>
+    ${c.description?`<p>${esc(c.description)}</p>`:''}
+    <div class="farm-box">
+      <h3 style="font-family:var(--font-display);margin:0 0 0.3rem;color:var(--wood-dark);">${owner?esc(owner.display_name):'Finca'}</h3>
+      <div style="color:var(--ink-soft);font-size:0.9rem;margin-bottom:0.6rem;">${owner?esc(owner.city||''):''}</div>
+      <div id="detailMap"></div>
+      <div style="margin-top:0.9rem;">${actionSection}</div>
+    </div>`;
+}
+function renderModal(){
+  if(!state.modal) return '';
+  let inner = '';
+  if(state.modal==='login') inner = loginModalHtml();
+  else if(state.modal==='register') inner = registerModalHtml();
+  else if(state.modal==='addCattle') inner = addCattleModalHtml();
+  else if(state.modal==='editProfile') inner = editProfileModalHtml();
+  else if(state.modal==='detail') inner = detailModalHtml();
+  return `<div class="overlay" onclick="handleOverlayClick(event)"><div class="modal" onclick="event.stopPropagation()">
+    <button class="modal-close" onclick="closeModal()">×</button>${inner}
+  </div></div>`;
+}
+function buildMarkup(){
+  if(state.loading) return `<div class="boot">Cargando…</div>`;
+  let body = renderNav();
+  if(state.view==='explore'){
+    body += renderHero();
+    body += `<div class="section"><div class="section-header"><h2>Ganado disponible</h2></div>${renderFilters()}${renderGrid()}</div>`;
+  } else if(state.view==='map'){
+    body += renderMapView();
+  } else if(state.view==='dashboard'){
+    body += state.currentUser ? renderDashboard() : `<div class="section"><div class="empty">Inicia sesión para ver tu cuenta.</div></div>`;
+  }
+  body += `<footer class="footer">Ganado Vecino — hecho para conectar fincas vecinas. ${new Date().getFullYear()}</footer>`;
+  body += renderModal();
+  return body;
+}
+function renderApp(){ document.getElementById('app').innerHTML = buildMarkup(); afterRender(); }
+function afterRender(){
+  if(state.modal==='register' && (state.registerRole||'vendedor')==='vendedor') initFormMap();
+  else if(state.modal==='editProfile' && state.currentUser && state.currentUser.role==='vendedor') initFormMap();
+  else if(state.modal==='detail'){
+    const c = getCattleById(state.selectedId);
+    const owner = c ? state.profiles[c.owner_id] : null;
+    initDetailMiniMap(owner);
+  } else if(!state.modal && state.view==='map') initMainMap();
+}
+
+/* ---------- Mapas ---------- */
+function initFormMap(){
+  const el = document.getElementById('formMap'); if(!el) return;
+  if(formMapInstance){ try{formMapInstance.remove();}catch(e){} formMapInstance=null; }
+  formMapInstance = L.map('formMap').setView([state.formLatLng.lat, state.formLatLng.lng], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap', maxZoom:18}).addTo(formMapInstance);
+  const marker = L.marker([state.formLatLng.lat, state.formLatLng.lng]).addTo(formMapInstance);
+  formMapInstance.on('click', function(e){
+    state.formLatLng = {lat:e.latlng.lat, lng:e.latlng.lng};
+    marker.setLatLng(e.latlng);
+  });
+  setTimeout(()=>{ try{formMapInstance.invalidateSize();}catch(e){} }, 80);
+}
+function initDetailMiniMap(owner){
+  const el = document.getElementById('detailMap'); if(!el) return;
+  if(detailMapInstance){ try{detailMapInstance.remove();}catch(e){} detailMapInstance=null; }
+  if(!owner || owner.lat==null){ el.innerHTML=''; return; }
+  detailMapInstance = L.map('detailMap',{zoomControl:false, dragging:false, scrollWheelZoom:false, doubleClickZoom:false}).setView([owner.lat, owner.lng], 11);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(detailMapInstance);
+  L.marker([owner.lat, owner.lng]).addTo(detailMapInstance);
+  setTimeout(()=>{ try{detailMapInstance.invalidateSize();}catch(e){} }, 80);
+}
+function initMainMap(){
+  const el = document.getElementById('mainMap'); if(!el) return;
+  if(mainMapInstance){ try{mainMapInstance.remove();}catch(e){} mainMapInstance=null; }
+  mainMapInstance = L.map('mainMap').setView([4.5709,-74.2973], 6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap'}).addTo(mainMapInstance);
+  const farms = {};
+  state.cattle.forEach(c=>{ (farms[c.owner_id]=farms[c.owner_id]||[]).push(c); });
+  Object.keys(farms).forEach(ownerId=>{
+    const user = state.profiles[ownerId];
+    if(!user || user.lat==null) return;
+    const items = farms[ownerId].filter(a=>a.status==='disponible').slice(0,6);
+    const listHtml = items.length ? items.map(a=>`<div style="margin:2px 0;"><a href="#" onclick="event.preventDefault();viewDetail('${a.id}')" style="color:#8C4A2F;font-weight:700;text-decoration:none;">${esc(a.name)}</a> — ${esc(a.breed)}${a.price?(' · $'+Number(a.price).toLocaleString('es-CO')):''}</div>`).join('') : '<div style="color:#6b5c47;">Sin animales disponibles ahora</div>';
+    const popup = `<div style="font-family:Karla,sans-serif;min-width:190px;"><div style="font-family:Fraunces,serif;font-size:1rem;font-weight:600;">${esc(user.display_name)}</div><div style="color:#6b5c47;font-size:0.82rem;margin-bottom:4px;">${esc(user.city||'')}</div>${listHtml}</div>`;
+    L.marker([user.lat, user.lng]).addTo(mainMapInstance).bindPopup(popup);
+  });
+  setTimeout(()=>{ try{mainMapInstance.invalidateSize();}catch(e){} }, 80);
+}
+
+/* ---------- Navegación / modales ---------- */
+async function refreshData(){ await loadPublicData(); renderApp(); }
+function setView(v){ state.modal=null; state.view=v; renderApp(); }
+function goDashboard(){ if(!state.currentUser){ openLogin(); } else { state.modal=null; state.view='dashboard'; renderApp(); } }
+function openLogin(){ state.error=''; state.modal='login'; renderApp(); }
+function openRegister(role){ state.error=''; state.registerRole = role || 'vendedor'; state.registerDraft = {}; state.formLatLng={lat:4.5709,lng:-74.2973}; state.modal='register'; renderApp(); }
+function setRegisterRole(role){
+  const g = id => { const el = document.getElementById(id); return el ? el.value : undefined; };
+  state.registerDraft = state.registerDraft || {};
+  ['reg-username','reg-password','reg-farmname','reg-phone','reg-city','reg-name'].forEach(id=>{
+    const v = g(id); if(v!==undefined) state.registerDraft[id]=v;
+  });
+  state.registerRole = role;
+  renderApp();
+}
+function openEditProfile(){
+  state.error='';
+  if(state.currentUser.role==='vendedor') state.formLatLng={lat:state.currentUser.lat,lng:state.currentUser.lng};
+  state.modal='editProfile'; renderApp();
+}
+function goPublish(){
+  if(!state.currentUser){ openRegister('vendedor'); return; }
+  if(state.currentUser.role!=='vendedor'){ state.error='Tu cuenta es de comprador. Inicia sesión con una cuenta de vendedor o crea una nueva.'; state.modal='login'; renderApp(); return; }
+  state.modal=null; state.view='dashboard'; renderApp();
+}
+function openAddCattle(){ state.error=''; pendingExistingPhotoUrls=[]; pendingNewPhotoFiles=[]; state.editingId=null; state.modal='addCattle'; renderApp(); }
+function editCattlePrompt(id){
+  const c = getCattleById(id);
+  if(!c || !state.currentUser || c.owner_id!==state.currentUser.id) return;
+  state.error=''; pendingExistingPhotoUrls=[...(c.photos||[])]; pendingNewPhotoFiles=[]; state.editingId=id; state.modal='addCattle'; renderApp();
+}
+async function viewDetail(id){
+  state.selectedId=id; state.detailPhotoIndex=0; state.error=''; state.modal='detail';
+  renderApp();
+  const c = getCattleById(id);
+  const cu = state.currentUser;
+  if(c && cu && cu.role==='comprador' && c.owner_id!==cu.id && state.contactsCache[c.owner_id]===undefined){
+    await getOwnerPhone(c.owner_id);
+    if(state.modal==='detail' && state.selectedId===id) renderApp();
+  }
+}
+function changeDetailPhoto(delta){
+  const c = getCattleById(state.selectedId);
+  if(!c || !c.photos || !c.photos.length) return;
+  const n = c.photos.length;
+  state.detailPhotoIndex = ((state.detailPhotoIndex||0)+delta+n)%n;
+  renderApp();
+}
+function closeModal(){ state.modal=null; state.error=''; renderApp(); }
+function handleOverlayClick(e){ if(e.target.classList.contains('overlay')) closeModal(); }
+
+/* ---------- Filtros ---------- */
+function applyFilters(){
+  state.filters = {
+    q: document.getElementById('f-q').value.trim().toLowerCase(),
+    breed: document.getElementById('f-breed').value,
+    sex: document.getElementById('f-sex').value,
+    minAge: document.getElementById('f-minAge').value,
+    maxAge: document.getElementById('f-maxAge').value,
+    minWeight: document.getElementById('f-minWeight').value,
+    maxWeight: document.getElementById('f-maxWeight').value,
+    maxPrice: document.getElementById('f-maxPrice').value,
+    onlyAvailable: document.getElementById('f-onlyAvailable').checked
+  };
+  renderApp();
+}
+function clearFilters(){ state.filters = defaultFilters(); renderApp(); }
+
+/* ---------- Fotos ---------- */
+function handleImageUpload(e){
+  const total = pendingExistingPhotoUrls.length + pendingNewPhotoFiles.length;
+  const files = Array.from(e.target.files).slice(0, Math.max(0,4-total));
+  files.forEach(f=>pendingNewPhotoFiles.push(f));
+  const prev = document.getElementById('photoPreview');
+  if(prev) prev.innerHTML = renderPhotoPreview();
+  e.target.value = '';
+}
+function removeExistingPhoto(i){
+  pendingExistingPhotoUrls.splice(i,1);
+  const prev = document.getElementById('photoPreview');
+  if(prev) prev.innerHTML = renderPhotoPreview();
+}
+
+/* ---------- Cuentas ---------- */
+async function handleRegister(event){
+  event.preventDefault();
+  if(state.busy) return false;
+  const role = state.registerRole || 'vendedor';
+  const username = document.getElementById('reg-username').value.trim().toLowerCase();
+  const password = document.getElementById('reg-password').value;
+  if(!/^[a-z0-9_.-]{3,20}$/.test(username)){ state.error='El usuario debe tener 3-20 letras/números, sin espacios ni tildes.'; renderApp(); return false; }
+  if(password.length<6){ state.error='La contraseña debe tener al menos 6 caracteres.'; renderApp(); return false; }
+  const phone = document.getElementById('reg-phone').value.trim();
+  const city = document.getElementById('reg-city').value.trim();
+  let display_name, lat=null, lng=null;
+  if(role==='vendedor'){
+    display_name = document.getElementById('reg-farmname').value.trim();
+    if(!display_name){ state.error='El nombre de la finca es obligatorio.'; renderApp(); return false; }
+    lat = state.formLatLng.lat; lng = state.formLatLng.lng;
+  } else {
+    display_name = document.getElementById('reg-name').value.trim();
+    if(!display_name){ state.error='Tu nombre es obligatorio.'; renderApp(); return false; }
+  }
+  state.busy = true; renderApp();
+  const email = `${username}@${EMAIL_DOMAIN}`;
+  const {data, error} = await sb.auth.signUp({email, password});
+  if(error){
+    state.busy=false;
+    state.error = /registered|exists/i.test(error.message) ? 'Ese nombre de usuario ya existe.' : ('No se pudo crear la cuenta: '+error.message);
+    renderApp(); return false;
+  }
+  const userId = data.user.id;
+  const {error:pErr} = await sb.from('profiles').insert({id:userId, role, display_name, city, lat, lng});
+  if(pErr){ state.busy=false; state.error='Cuenta creada pero hubo un error guardando el perfil: '+pErr.message; renderApp(); return false; }
+  if(phone){ await sb.from('contacts').insert({user_id:userId, phone}); }
+  await loadSession();
+  await loadPublicData();
+  state.busy=false; state.modal=null; state.view='dashboard';
+  renderApp();
+  return false;
+}
+async function handleLogin(event){
+  event.preventDefault();
+  if(state.busy) return false;
+  const username = document.getElementById('login-username').value.trim().toLowerCase();
+  const password = document.getElementById('login-password').value;
+  state.busy = true; renderApp();
+  const email = `${username}@${EMAIL_DOMAIN}`;
+  const {error} = await sb.auth.signInWithPassword({email, password});
+  if(error){ state.busy=false; state.error='Usuario o contraseña incorrectos.'; renderApp(); return false; }
+  await loadSession();
+  state.busy=false; state.modal=null; state.view='dashboard';
+  renderApp();
+  return false;
+}
+async function handleEditProfile(event){
+  event.preventDefault();
+  const u = state.currentUser;
+  let updates = {};
+  if(u.role==='vendedor'){
+    const display_name = document.getElementById('ef-farmname').value.trim();
+    if(!display_name){ state.error='El nombre de la finca es obligatorio.'; renderApp(); return false; }
+    updates = {display_name, city:document.getElementById('ef-city').value.trim(), lat:state.formLatLng.lat, lng:state.formLatLng.lng};
+  } else {
+    const display_name = document.getElementById('ef-name').value.trim();
+    if(!display_name){ state.error='Tu nombre es obligatorio.'; renderApp(); return false; }
+    updates = {display_name, city:document.getElementById('ef-city').value.trim()};
+  }
+  const phone = document.getElementById('ef-phone').value.trim();
+  await sb.from('profiles').update(updates).eq('id', u.id);
+  const {data:existing} = await sb.from('contacts').select('user_id').eq('user_id', u.id).maybeSingle();
+  if(existing) await sb.from('contacts').update({phone}).eq('user_id', u.id);
+  else await sb.from('contacts').insert({user_id:u.id, phone});
+  await loadSession();
+  await loadPublicData();
+  state.modal=null;
+  renderApp();
+  return false;
+}
+async function logout(){ await sb.auth.signOut(); state.currentUser=null; state.favorites=[]; state.view='explore'; state.modal=null; renderApp(); }
+
+/* ---------- Ganado ---------- */
+async function handleSaveCattle(event){
+  event.preventDefault();
+  if(state.busy) return false;
+  if(!state.currentUser || state.currentUser.role!=='vendedor'){ state.error='Solo las cuentas de vendedor pueden publicar ganado.'; renderApp(); return false; }
+  const name = document.getElementById('c-name').value.trim();
+  const breed = document.getElementById('c-breed').value.trim();
+  const genetic_line = document.getElementById('c-line').value.trim();
+  const sex = document.getElementById('c-sex').value;
+  const status = document.getElementById('c-status').value;
+  const age_months = Number(document.getElementById('c-age').value);
+  const weight_kg = Number(document.getElementById('c-weight').value);
+  const registro = document.getElementById('c-registro').value.trim();
+  const priceVal = document.getElementById('c-price').value;
+  const price = priceVal ? Number(priceVal) : null;
+  const description = document.getElementById('c-desc').value.trim();
+  if(!name || !breed || isNaN(age_months) || isNaN(weight_kg)){ state.error='Completa los campos obligatorios.'; renderApp(); return false; }
+
+  state.busy = true; renderApp();
+  let uploadedUrls = [];
+  try{
+    for(const f of pendingNewPhotoFiles){ uploadedUrls.push(await uploadPhoto(f, state.currentUser.id)); }
+  }catch(e){ state.busy=false; state.error='Error subiendo una foto: '+e.message; renderApp(); return false; }
+  const photos = [...pendingExistingPhotoUrls, ...uploadedUrls];
+
+  if(state.editingId){
+    const {error} = await sb.from('cattle').update({name,breed,genetic_line,sex,status,age_months,weight_kg,registro,price,description,photos}).eq('id', state.editingId);
+    if(error){ state.busy=false; state.error='Error guardando: '+error.message; renderApp(); return false; }
+  } else {
+    const {error} = await sb.from('cattle').insert({owner_id:state.currentUser.id,name,breed,genetic_line,sex,status,age_months,weight_kg,registro,price,description,photos});
+    if(error){ state.busy=false; state.error='Error publicando: '+error.message; renderApp(); return false; }
+  }
+  await loadPublicData();
+  state.busy=false; state.modal=null; state.editingId=null; state.view='dashboard';
+  renderApp();
+  return false;
+}
+async function toggleStatus(id){
+  const c = getCattleById(id);
+  if(!c || !state.currentUser || c.owner_id!==state.currentUser.id) return;
+  const newStatus = c.status==='disponible' ? 'vendido' : 'disponible';
+  await sb.from('cattle').update({status:newStatus}).eq('id', id);
+  await loadPublicData();
+  renderApp();
+}
+async function deleteCattle(id){
+  const c = getCattleById(id);
+  if(!c || !state.currentUser || c.owner_id!==state.currentUser.id) return;
+  if(!confirm('¿Eliminar este animal de la lista?')) return;
+  await sb.from('cattle').delete().eq('id', id);
+  await loadPublicData();
+  renderApp();
+}
+
+/* ---------- Favoritos ---------- */
+async function toggleFavorite(id){
+  if(!state.currentUser || state.currentUser.role!=='comprador') return;
+  const uid = state.currentUser.id;
+  if(state.favorites.includes(id)){
+    await sb.from('favorites').delete().eq('user_id', uid).eq('cattle_id', id);
+    state.favorites = state.favorites.filter(x=>x!==id);
+  } else {
+    await sb.from('favorites').insert({user_id:uid, cattle_id:id});
+    state.favorites.push(id);
+  }
+  renderApp();
+}
+
+/* ---------- Inicio ---------- */
+(async function(){
+  await loadPublicData();
+  await loadSession();
+  state.loading = false;
+  renderApp();
+})();
+</script>
+</body>
+</html>
