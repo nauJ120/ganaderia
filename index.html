@@ -213,7 +213,8 @@ async function uploadPhoto(file, userId){
 /* ---------- Estado ---------- */
 let state = {
   view:'explore', modal:null, editingId:null, selectedId:null, detailPhotoIndex:0,
-  filters: defaultFilters(), cattle:[], profiles:{}, contactsCache:{}, favorites:[],
+  filters: defaultFilters(), cattle:[], profiles:{}, contactsCache:{}, favorites:[], events:[],
+  inviteEmails:null,
   currentUser:null, formLatLng:{lat:4.5709,lng:-74.2973}, error:'',
   registerRole:'vendedor', registerDraft:{}, loading:true, busy:false
 };
@@ -223,13 +224,15 @@ let mainMapInstance=null, formMapInstance=null, detailMapInstance=null;
 
 /* ---------- Datos ---------- */
 async function loadPublicData(){
-  const [{data:cattleRows}, {data:profileRows}] = await Promise.all([
+  const [{data:cattleRows}, {data:profileRows}, {data:eventRows}] = await Promise.all([
     sb.from('cattle').select('*').order('created_at', {ascending:false}),
-    sb.from('profiles').select('*')
+    sb.from('profiles').select('*'),
+    sb.from('events').select('*').order('event_date', {ascending:true})
   ]);
   state.cattle = cattleRows || [];
   state.profiles = {};
   (profileRows||[]).forEach(p=>{ state.profiles[p.id] = p; });
+  state.events = eventRows || [];
 }
 async function loadSession(){
   const {data:{session}} = await sb.auth.getSession();
@@ -286,6 +289,7 @@ function renderNav(){
     <div class="nav-links">
       <a class="${state.view==='explore'?'active':''}" onclick="setView('explore')">Explorar</a>
       <a class="${state.view==='map'?'active':''}" onclick="setView('map')">Mapa</a>
+      <a class="${state.view==='events'?'active':''}" onclick="setView('events')">Eventos</a>
       <a class="${state.view==='dashboard'?'active':''}" onclick="goDashboard()">${dashLabel}</a>
     </div>
     <div class="nav-user">
@@ -414,6 +418,59 @@ function renderBuyerDashboard(u){
     ${favCattle.length===0 ? `<div class="empty">Aún no has guardado animales. Toca el ♡ en cualquier animal para guardarlo aquí.</div>` : `<div class="grid">${favCattle.map(renderCard).join('')}</div>`}
   </div>`;
 }
+function renderEventsView(){
+  const cu = state.currentUser;
+  const isAdmin = cu && cu.is_admin;
+  const today = new Date().toISOString().slice(0,10);
+  const upcoming = state.events.filter(e=>e.event_date>=today);
+  const past = state.events.filter(e=>e.event_date<today);
+  const card = (e)=>`<div class="dash-farm-card">
+      <div>
+        <h3 style="font-family:var(--font-display);margin:0 0 0.2rem;color:var(--wood-dark);">${esc(e.title)}</h3>
+        <div style="color:var(--ink-soft);font-size:0.88rem;">${new Date(e.event_date+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'})}${e.city?' · '+esc(e.city):''}</div>
+        ${e.description?`<p style="margin:0.5rem 0 0;">${esc(e.description)}</p>`:''}
+      </div>
+      ${isAdmin ? `<div style="display:flex;gap:0.5rem;flex-wrap:wrap;">
+        <button class="btn btn-outline btn-small" onclick="openInviteTool('${e.id}')">✉ Invitar a todos</button>
+        <button class="btn btn-danger btn-small" onclick="deleteEvent('${e.id}')">Eliminar</button>
+      </div>` : ''}
+    </div>`;
+  return `<div class="section">
+    <div class="section-header"><h2>Ferias y eventos</h2>${isAdmin?`<button class="btn btn-primary btn-small" onclick="openAddEvent()">+ Crear evento</button>`:''}</div>
+    ${upcoming.length===0 ? `<div class="empty">No hay eventos programados por ahora.</div>` : upcoming.map(card).join('')}
+    ${past.length ? `<div class="section-header" style="margin-top:2rem;"><h2 style="font-size:1.2rem;">Eventos pasados</h2></div>${past.map(card).join('')}` : ''}
+  </div>`;
+}
+function addEventModalHtml(){
+  return `<h2>Crear evento</h2>
+    ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
+    <form onsubmit="return handleSaveEvent(event)">
+      <div class="form-row"><label>Título</label><input id="ev-title" required placeholder="ej. Feria Ganadera de Ubaté"></div>
+      <div class="form-grid-2">
+        <div class="form-row"><label>Fecha</label><input id="ev-date" type="date" required></div>
+        <div class="form-row"><label>Ciudad / Municipio</label><input id="ev-city"></div>
+      </div>
+      <div class="form-row"><label>Descripción</label><textarea id="ev-desc" rows="3"></textarea></div>
+      <div class="form-row"><label>Ubicación (opcional, toca el mapa)</label><div id="formMap"></div></div>
+      <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;">Crear evento</button>
+    </form>`;
+}
+function inviteToolModalHtml(){
+  const ev = state.events.find(e=>e.id===state.inviteEventId);
+  if(!ev) return '<p>No se encontró el evento.</p>';
+  if(state.inviteEmails===null) return '<p>Cargando correos registrados…</p>';
+  const emails = state.inviteEmails;
+  const subject = encodeURIComponent(`Invitación: ${ev.title}`);
+  const body = encodeURIComponent(`¡Hola!\n\nTe invitamos a "${ev.title}"${ev.city?` en ${ev.city}`:''} el ${new Date(ev.event_date+'T00:00:00').toLocaleDateString('es-CO',{day:'numeric',month:'long',year:'numeric'})}.\n\n${ev.description||''}\n\n— Ganado Vecino`);
+  const mailto = `mailto:?bcc=${encodeURIComponent(emails.join(','))}&subject=${subject}&body=${body}`;
+  return `<h2>Invitar a "${esc(ev.title)}"</h2>
+    <p style="color:var(--ink-soft);font-size:0.9rem;">${emails.length} correo(s) registrado(s). Al hacer clic se abrirá tu programa de correo con todos en copia y un mensaje ya redactado — revísalo y dale enviar.</p>
+    <textarea readonly rows="4" style="width:100%;padding:0.6rem;border:1px solid var(--line);border-radius:6px;font-size:0.82rem;">${emails.join(', ')}</textarea>
+    <div style="display:flex;gap:0.6rem;flex-wrap:wrap;margin-top:0.9rem;">
+      <a class="btn btn-primary btn-small" href="${mailto}">Abrir en mi correo</a>
+      <button class="btn btn-outline btn-small" onclick="copyInviteEmails()">Copiar lista de correos</button>
+    </div>`;
+}
 function renderPhotoPreview(){
   const existing = pendingExistingPhotoUrls.map((url,i)=>`<div class="photo-thumb"><img src="${url}"><button type="button" onclick="removeExistingPhoto(${i})">×</button></div>`).join('');
   const fresh = pendingNewPhotoFiles.map((f)=>`<div class="photo-thumb"><img src="${URL.createObjectURL(f)}"></div>`).join('');
@@ -447,6 +504,9 @@ function registerModalHtml(){
           <div class="hint">Mínimo 6 caracteres.</div>
         </div>
       </div>
+      <div class="form-row"><label>Correo electrónico</label><input id="reg-email" type="email" value="${esc(d['reg-email']||'')}" required>
+        <div class="hint">Lo usamos solo para avisarte de ferias y eventos, no para iniciar sesión.</div>
+      </div>
       ${role==='vendedor' ? `
       <div class="form-row"><label>Nombre de la finca</label><input id="reg-farmname" value="${esc(d['reg-farmname']||'')}" required></div>
       <div class="form-grid-2">
@@ -461,6 +521,10 @@ function registerModalHtml(){
         <div class="form-row"><label>Ciudad / Municipio</label><input id="reg-city" value="${esc(d['reg-city']||'')}"></div>
       </div>
       `}
+      <div class="form-row"><label style="display:flex;align-items:flex-start;gap:0.5rem;font-weight:400;cursor:pointer;">
+        <input type="checkbox" id="reg-terms" required style="margin-top:0.2rem;width:auto;">
+        <span style="font-size:0.85rem;color:var(--ink-soft);">Acepto que Ganado Vecino solo conecta ganaderos: no participa en la venta ni garantiza la información de los animales publicados. La negociación y el pago son directos entre comprador y vendedor. Mi nombre, ciudad y ubicación aproximada de finca serán visibles públicamente; mi teléfono solo lo verán cuentas de comprador, y mi correo solo se usa para avisos de eventos.</span>
+      </label></div>
       <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;" ${state.busy?'disabled':''}>${state.busy?'Creando cuenta…':'Crear cuenta'}</button>
     </form>
     <p style="text-align:center;margin-top:1rem;font-size:0.9rem;">¿Ya tienes cuenta? <a href="#" onclick="event.preventDefault();openLogin()" style="color:var(--leather-dark);font-weight:700;">Ingresa</a></p>`;
@@ -596,6 +660,8 @@ function renderModal(){
   else if(state.modal==='register') inner = registerModalHtml();
   else if(state.modal==='addCattle') inner = addCattleModalHtml();
   else if(state.modal==='editProfile') inner = editProfileModalHtml();
+  else if(state.modal==='addEvent') inner = addEventModalHtml();
+  else if(state.modal==='inviteTool') inner = inviteToolModalHtml();
   else if(state.modal==='detail') inner = detailModalHtml();
   return `<div class="overlay" onclick="handleOverlayClick(event)"><div class="modal" onclick="event.stopPropagation()">
     <button class="modal-close" onclick="closeModal()">×</button>${inner}
@@ -609,6 +675,8 @@ function buildMarkup(){
     body += `<div class="section"><div class="section-header"><h2>Ganado disponible</h2></div>${renderFilters()}${renderGrid()}</div>`;
   } else if(state.view==='map'){
     body += renderMapView();
+  } else if(state.view==='events'){
+    body += renderEventsView();
   } else if(state.view==='dashboard'){
     body += state.currentUser ? renderDashboard() : `<div class="section"><div class="empty">Inicia sesión para ver tu cuenta.</div></div>`;
   }
@@ -620,6 +688,7 @@ function renderApp(){ document.getElementById('app').innerHTML = buildMarkup(); 
 function afterRender(){
   if(state.modal==='register' && (state.registerRole||'vendedor')==='vendedor') initFormMap();
   else if(state.modal==='editProfile' && state.currentUser && state.currentUser.role==='vendedor') initFormMap();
+  else if(state.modal==='addEvent') initFormMap();
   else if(state.modal==='detail'){
     const c = getCattleById(state.selectedId);
     const owner = c ? state.profiles[c.owner_id] : null;
@@ -759,6 +828,9 @@ async function handleRegister(event){
   const password = document.getElementById('reg-password').value;
   if(!/^[a-z0-9_.-]{3,20}$/.test(username)){ state.error='El usuario debe tener 3-20 letras/números, sin espacios ni tildes.'; renderApp(); return false; }
   if(password.length<6){ state.error='La contraseña debe tener al menos 6 caracteres.'; renderApp(); return false; }
+  const realEmail = document.getElementById('reg-email').value.trim();
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(realEmail)){ state.error='Escribe un correo electrónico válido.'; renderApp(); return false; }
+  if(!document.getElementById('reg-terms').checked){ state.error='Debes aceptar los términos para crear la cuenta.'; renderApp(); return false; }
   const phone = document.getElementById('reg-phone').value.trim();
   const city = document.getElementById('reg-city').value.trim();
   let display_name, lat=null, lng=null;
@@ -779,9 +851,10 @@ async function handleRegister(event){
     renderApp(); return false;
   }
   const userId = data.user.id;
-  const {error:pErr} = await sb.from('profiles').insert({id:userId, role, display_name, city, lat, lng});
+  const {error:pErr} = await sb.from('profiles').insert({id:userId, role, display_name, city, lat, lng, accepted_terms:true});
   if(pErr){ state.busy=false; state.error='Cuenta creada pero hubo un error guardando el perfil: '+pErr.message; renderApp(); return false; }
   if(phone){ await sb.from('contacts').insert({user_id:userId, phone}); }
+  await sb.from('notification_emails').insert({user_id:userId, email:realEmail});
   await loadSession();
   await loadPublicData();
   state.busy=false; state.modal=null; state.view='dashboard';
@@ -894,6 +967,49 @@ async function toggleFavorite(id){
     state.favorites.push(id);
   }
   renderApp();
+}
+
+/* ---------- Eventos ---------- */
+function openAddEvent(){
+  if(!state.currentUser || !state.currentUser.is_admin) return;
+  state.error=''; state.formLatLng={lat:4.5709,lng:-74.2973}; state.modal='addEvent'; renderApp();
+}
+async function handleSaveEvent(event){
+  event.preventDefault();
+  if(!state.currentUser || !state.currentUser.is_admin) return false;
+  const title = document.getElementById('ev-title').value.trim();
+  const event_date = document.getElementById('ev-date').value;
+  const city = document.getElementById('ev-city').value.trim();
+  const description = document.getElementById('ev-desc').value.trim();
+  if(!title || !event_date){ state.error='Completa el título y la fecha.'; renderApp(); return false; }
+  const {error} = await sb.from('events').insert({
+    title, description, event_date, city,
+    lat:state.formLatLng.lat, lng:state.formLatLng.lng, created_by:state.currentUser.id
+  });
+  if(error){ state.error='Error creando el evento: '+error.message; renderApp(); return false; }
+  await loadPublicData();
+  state.modal=null;
+  renderApp();
+  return false;
+}
+async function deleteEvent(id){
+  if(!state.currentUser || !state.currentUser.is_admin) return;
+  if(!confirm('¿Eliminar este evento?')) return;
+  await sb.from('events').delete().eq('id', id);
+  await loadPublicData();
+  renderApp();
+}
+async function openInviteTool(eventId){
+  if(!state.currentUser || !state.currentUser.is_admin) return;
+  state.inviteEventId = eventId; state.inviteEmails = null; state.modal='inviteTool';
+  renderApp();
+  const {data, error} = await sb.from('notification_emails').select('email');
+  state.inviteEmails = error ? [] : (data||[]).map(r=>r.email).filter(Boolean);
+  if(state.modal==='inviteTool') renderApp();
+}
+function copyInviteEmails(){
+  if(!state.inviteEmails) return;
+  navigator.clipboard.writeText(state.inviteEmails.join(', ')).then(()=>alert('Correos copiados.'));
 }
 
 /* ---------- Inicio ---------- */
