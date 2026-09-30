@@ -178,7 +178,7 @@ function esc(s){
   return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function genId(){ return 'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
-function defaultFilters(){ return {q:'',breed:'',sex:'',minAge:'',maxAge:'',minWeight:'',maxWeight:'',maxPrice:'',onlyAvailable:true}; }
+function defaultFilters(){ return {q:'',category:'',breed:'',sex:'',minAge:'',maxAge:'',minWeight:'',maxWeight:'',maxPrice:'',onlyAvailable:true}; }
 function resizeImageToBlob(file, maxDim, quality){
   maxDim = maxDim || 1000; quality = quality || 0.78;
   return new Promise((resolve,reject)=>{
@@ -274,6 +274,7 @@ function getFilteredCattle(){
   return state.cattle.filter(c=>{
     const f = state.filters;
     if(f.onlyAvailable && c.status!=='disponible') return false;
+    if(f.category && (c.category||'Doble propósito')!==f.category) return false;
     if(f.breed && c.breed!==f.breed) return false;
     if(f.sex && c.sex!==f.sex) return false;
     if(f.minAge!=='' && c.age_months < Number(f.minAge)) return false;
@@ -333,6 +334,12 @@ function renderFilters(){
   return `<div class="filters" id="filtersSection">
     <div class="filters-grid">
       <div class="field"><label>Buscar (raza, línea, arete)</label><input id="f-q" value="${esc(f.q)}" placeholder="ej. Brahman rojo"></div>
+      <div class="field"><label>Categoría</label><select id="f-category">
+        <option value="">Todas</option>
+        <option value="Leche" ${f.category==='Leche'?'selected':''}>Leche</option>
+        <option value="Carne" ${f.category==='Carne'?'selected':''}>Carne</option>
+        <option value="Doble propósito" ${f.category==='Doble propósito'?'selected':''}>Doble propósito</option>
+      </select></div>
       <div class="field"><label>Raza</label><select id="f-breed">
         <option value="">Todas</option>
         ${breeds.map(b=>`<option value="${esc(b)}" ${f.breed===b?'selected':''}>${esc(b)}</option>`).join('')}
@@ -361,21 +368,25 @@ function renderCard(c){
   const photo = c.photos && c.photos[0];
   const cu = state.currentUser;
   const isBuyer = cu && cu.role==='comprador';
+  const isAdmin = cu && cu.is_admin;
   const isFav = isBuyer && state.favorites.includes(c.id);
+  const lotLabel = c.listing_type==='Lote' ? ` · Lote${c.quantity?' de '+c.quantity:''}` : '';
   return `<div class="card" onclick="viewDetail('${c.id}')">
     ${photo ? `<img class="card-photo" src="${photo}" alt="${esc(c.name)}" loading="lazy">` : `<div class="card-photo-placeholder">${miniCowSVG}</div>`}
     ${isBuyer ? `<button class="fav-btn ${isFav?'active':''}" onclick="event.stopPropagation();toggleFavorite('${c.id}')">${isFav?'♥':'♡'}</button>` : ''}
+    ${isAdmin ? `<button class="fav-btn ${c.is_featured?'active':''}" onclick="event.stopPropagation();toggleFeatured('${c.id}')">${c.is_featured?'★':'☆'}</button>` : ''}
+    ${c.is_featured ? `<span class="card-badge">⭐ Destacado</span>` : ''}
     ${c.status==='vendido' ? `<span class="card-sold-ribbon">Vendido</span>` : ''}
     <div class="card-body">
       <h3>${esc(c.name)}</h3>
-      <div class="card-meta">${esc(c.breed)} · ${esc(c.sex)} · ${c.age_months} meses · ${c.weight_kg} kg</div>
+      <div class="card-meta">${esc(c.breed)} · ${esc(c.sex)} · ${c.age_months} meses · ${c.weight_kg} kg${lotLabel}</div>
       <div class="card-price">${c.price ? '$'+Number(c.price).toLocaleString('es-CO') : 'Precio a convenir'}</div>
       <div class="card-farm">${owner&&owner.avatar_url?`<img src="${owner.avatar_url}" style="width:16px;height:16px;border-radius:50%;object-fit:cover;vertical-align:-3px;margin-right:3px;">`:'📍 '}${owner?esc(owner.display_name):'Finca'} — ${owner?esc(owner.city||''):''}</div>
     </div>
   </div>`;
 }
 function renderGrid(){
-  const list = getFilteredCattle();
+  const list = getFilteredCattle().sort((a,b)=>(b.is_featured?1:0)-(a.is_featured?1:0));
   if(list.length===0) return `<div class="empty">No hay animales que coincidan con esos filtros todavía.</div>`;
   return `<div class="grid">${list.map(renderCard).join('')}</div>`;
 }
@@ -595,18 +606,50 @@ function handleAvatarPreview(e){
   const wrap = document.getElementById('avatarPreviewWrap');
   if(wrap) wrap.innerHTML = `<img src="${URL.createObjectURL(f)}" style="width:100%;height:100%;object-fit:cover;">`;
 }
+const BREEDS_BY_CATEGORY = {
+  'Leche': ['Holstein','Jersey','Ayrshire','Pardo Suizo','Girolando','Gyr','Lucerna','Indubrasil','Patiano'],
+  'Carne': ['Angus','Brahman','Brangus','Braford','Hereford','Charolais','Limousin','Wagyu','Santa Gertrudis','Romosinuano','Beefmaster','Senepol','Bonsmara'],
+  'Doble propósito': ['Normando','Simmental','Simbrah','Blanco Orejinegro','Braunvieh','Cebú','Guzerat','Montbéliarde','Búfalo']
+};
+function breedOptionsHtml(category){
+  return (BREEDS_BY_CATEGORY[category]||[]).map(b=>`<option value="${b}">`).join('');
+}
+function updateBreedList(){
+  const cat = document.getElementById('c-category').value;
+  const dl = document.getElementById('breedList');
+  if(dl) dl.innerHTML = breedOptionsHtml(cat);
+}
+function toggleQuantityField(){
+  const isLote = document.getElementById('c-listing-type').value === 'Lote';
+  const row = document.getElementById('quantityRow');
+  if(row) row.style.display = isLote ? '' : 'none';
+}
 function addCattleModalHtml(){
   const c = state.editingId ? getCattleById(state.editingId) : null;
+  const category = c ? (c.category||'Doble propósito') : 'Doble propósito';
+  const listingType = c ? (c.listing_type||'Ejemplar') : 'Ejemplar';
   return `<h2>${c?'Editar animal':'Agregar animal'}</h2>
     ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
     <form onsubmit="return handleSaveCattle(event)">
       <div class="form-grid-2">
-        <div class="form-row"><label>Nombre o arete</label><input id="c-name" value="${c?esc(c.name):''}" required></div>
+        <div class="form-row"><label>Categoría</label><select id="c-category" onchange="updateBreedList()">
+          <option value="Leche" ${category==='Leche'?'selected':''}>Leche</option>
+          <option value="Carne" ${category==='Carne'?'selected':''}>Carne</option>
+          <option value="Doble propósito" ${category==='Doble propósito'?'selected':''}>Doble propósito</option>
+        </select></div>
         <div class="form-row"><label>Raza</label><input id="c-breed" list="breedList" value="${c?esc(c.breed):''}" required>
-          <datalist id="breedList">
-            <option value="Brahman"><option value="Angus"><option value="Normando"><option value="Cebú"><option value="Holstein"><option value="Simmental"><option value="Romosinuano"><option value="Blanco Orejinegro"><option value="Gyr"><option value="Charolais"><option value="Brangus">
-          </datalist>
+          <datalist id="breedList">${breedOptionsHtml(category)}</datalist>
         </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row"><label>Nombre o arete</label><input id="c-name" value="${c?esc(c.name):''}" required></div>
+        <div class="form-row"><label>Tipo de anuncio</label><select id="c-listing-type" onchange="toggleQuantityField()">
+          <option value="Ejemplar" ${listingType==='Ejemplar'?'selected':''}>Ejemplar (uno solo)</option>
+          <option value="Lote" ${listingType==='Lote'?'selected':''}>Lote (varios animales)</option>
+        </select></div>
+      </div>
+      <div class="form-row" id="quantityRow" style="${listingType==='Lote'?'':'display:none;'}">
+        <label>Cantidad de animales en el lote</label><input type="number" id="c-quantity" min="2" value="${c&&c.quantity?c.quantity:''}">
       </div>
       <div class="form-row"><label>Línea genética</label><input id="c-line" value="${c?esc(c.genetic_line||''):''}" placeholder="ej. F1 Angus x Brahman"></div>
       <div class="form-grid-2">
@@ -628,9 +671,11 @@ function addCattleModalHtml(){
         <div class="form-row"><label>Precio en COP (opcional)</label><input type="number" id="c-price" min="0" value="${c&&c.price?c.price:''}"></div>
       </div>
       <div class="form-row"><label>Descripción</label><textarea id="c-desc" rows="3">${c?esc(c.description||''):''}</textarea></div>
+      <div class="form-row"><label>Video (opcional — link de YouTube o similar)</label><input id="c-video" value="${c?esc(c.video_url||''):''}" placeholder="https://..."></div>
       <div class="form-row">
-        <label>Fotos (máx. 4)</label>
+        <label>Fotos (máx. 6)</label>
         <input type="file" id="c-photos" accept="image/*" multiple onchange="handleImageUpload(event)">
+
         <div class="photo-preview" id="photoPreview">${renderPhotoPreview()}</div>
       </div>
       <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;" ${state.busy?'disabled':''}>${state.busy?'Guardando…':(c?'Guardar cambios':'Publicar animal')}</button>
@@ -675,8 +720,8 @@ function detailModalHtml(){
       ${photos ? `<img src="${photos[idx]}">${photos.length>1?`<button class="gallery-nav prev" onclick="changeDetailPhoto(-1)">‹</button><button class="gallery-nav next" onclick="changeDetailPhoto(1)">›</button>`:''}`
         : `<div style="display:flex;align-items:center;justify-content:center;height:100%;">${miniCowSVG}</div>`}
     </div>
-    <h2 style="margin-bottom:0.1rem;">${esc(c.name)}</h2>
-    <div style="color:var(--ink-soft);margin-bottom:0.4rem;">${esc(c.breed)}${c.genetic_line?' · '+esc(c.genetic_line):''}</div>
+    <h2 style="margin-bottom:0.1rem;">${c.is_featured?'⭐ ':''}${esc(c.name)}</h2>
+    <div style="color:var(--ink-soft);margin-bottom:0.4rem;">${esc(c.breed)}${c.genetic_line?' · '+esc(c.genetic_line):''} · ${esc(c.category||'Doble propósito')}${c.listing_type==='Lote'?' · Lote'+(c.quantity?' de '+c.quantity:''):''}</div>
     <div class="card-price" style="font-size:1.35rem;">${c.price?'$'+Number(c.price).toLocaleString('es-CO'):'Precio a convenir'}</div>
     <div class="spec-list">
       <div><span>Sexo</span>${esc(c.sex)}</div>
@@ -686,6 +731,7 @@ function detailModalHtml(){
       <div><span>Estado</span>${c.status==='disponible'?'Disponible':'Vendido'}</div>
     </div>
     ${c.description?`<p>${esc(c.description)}</p>`:''}
+    ${c.video_url?`<p><a href="${esc(c.video_url)}" target="_blank" rel="noopener" style="color:var(--leather-dark);font-weight:700;">▶ Ver video del animal</a></p>`:''}
     <div class="farm-box">
       <h3 style="font-family:var(--font-display);margin:0 0 0.3rem;color:var(--wood-dark);display:flex;align-items:center;gap:0.5rem;">${owner&&owner.avatar_url?`<img src="${owner.avatar_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">`:''}${owner?esc(owner.display_name):'Finca'}</h3>
       <div style="color:var(--ink-soft);font-size:0.9rem;margin-bottom:0.6rem;">${owner?esc(owner.city||''):''}</div>
@@ -831,6 +877,7 @@ function handleOverlayClick(e){ if(e.target.classList.contains('overlay')) close
 function applyFilters(){
   state.filters = {
     q: document.getElementById('f-q').value.trim().toLowerCase(),
+    category: document.getElementById('f-category').value,
     breed: document.getElementById('f-breed').value,
     sex: document.getElementById('f-sex').value,
     minAge: document.getElementById('f-minAge').value,
@@ -847,7 +894,7 @@ function clearFilters(){ state.filters = defaultFilters(); renderApp(); }
 /* ---------- Fotos ---------- */
 function handleImageUpload(e){
   const total = pendingExistingPhotoUrls.length + pendingNewPhotoFiles.length;
-  const files = Array.from(e.target.files).slice(0, Math.max(0,4-total));
+  const files = Array.from(e.target.files).slice(0, Math.max(0,6-total));
   files.forEach(f=>pendingNewPhotoFiles.push(f));
   const prev = document.getElementById('photoPreview');
   if(prev) prev.innerHTML = renderPhotoPreview();
@@ -963,6 +1010,11 @@ async function handleSaveCattle(event){
   if(!state.currentUser || state.currentUser.role!=='vendedor'){ state.error='Solo las cuentas de vendedor pueden publicar ganado.'; renderApp(); return false; }
   const name = document.getElementById('c-name').value.trim();
   const breed = document.getElementById('c-breed').value.trim();
+  const category = document.getElementById('c-category').value;
+  const listing_type = document.getElementById('c-listing-type').value;
+  const quantityVal = document.getElementById('c-quantity').value;
+  const quantity = (listing_type==='Lote' && quantityVal) ? Number(quantityVal) : null;
+  const video_url = document.getElementById('c-video').value.trim();
   const genetic_line = document.getElementById('c-line').value.trim();
   const sex = document.getElementById('c-sex').value;
   const status = document.getElementById('c-status').value;
@@ -973,6 +1025,7 @@ async function handleSaveCattle(event){
   const price = priceVal ? Number(priceVal) : null;
   const description = document.getElementById('c-desc').value.trim();
   if(!name || !breed || isNaN(age_months) || isNaN(weight_kg)){ state.error='Completa los campos obligatorios.'; renderApp(); return false; }
+  if(listing_type==='Lote' && !quantity){ state.error='Indica cuántos animales tiene el lote.'; renderApp(); return false; }
 
   state.busy = true; renderApp();
   let uploadedUrls = [];
@@ -982,10 +1035,10 @@ async function handleSaveCattle(event){
   const photos = [...pendingExistingPhotoUrls, ...uploadedUrls];
 
   if(state.editingId){
-    const {error} = await sb.from('cattle').update({name,breed,genetic_line,sex,status,age_months,weight_kg,registro,price,description,photos}).eq('id', state.editingId);
+    const {error} = await sb.from('cattle').update({name,breed,category,listing_type,quantity,video_url,genetic_line,sex,status,age_months,weight_kg,registro,price,description,photos}).eq('id', state.editingId);
     if(error){ state.busy=false; state.error='Error guardando: '+error.message; renderApp(); return false; }
   } else {
-    const {error} = await sb.from('cattle').insert({owner_id:state.currentUser.id,name,breed,genetic_line,sex,status,age_months,weight_kg,registro,price,description,photos});
+    const {error} = await sb.from('cattle').insert({owner_id:state.currentUser.id,name,breed,category,listing_type,quantity,video_url,genetic_line,sex,status,age_months,weight_kg,registro,price,description,photos});
     if(error){ state.busy=false; state.error='Error publicando: '+error.message; renderApp(); return false; }
   }
   await loadPublicData();
@@ -998,6 +1051,14 @@ async function toggleStatus(id){
   if(!c || !state.currentUser || c.owner_id!==state.currentUser.id) return;
   const newStatus = c.status==='disponible' ? 'vendido' : 'disponible';
   await sb.from('cattle').update({status:newStatus}).eq('id', id);
+  await loadPublicData();
+  renderApp();
+}
+async function toggleFeatured(id){
+  if(!state.currentUser || !state.currentUser.is_admin) return;
+  const c = getCattleById(id);
+  if(!c) return;
+  await sb.from('cattle').update({is_featured: !c.is_featured}).eq('id', id);
   await loadPublicData();
   renderApp();
 }
