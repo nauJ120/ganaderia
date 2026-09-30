@@ -179,20 +179,20 @@ function esc(s){
 }
 function genId(){ return 'a'+Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
 function defaultFilters(){ return {q:'',breed:'',sex:'',minAge:'',maxAge:'',minWeight:'',maxWeight:'',maxPrice:'',onlyAvailable:true}; }
-function resizeImageToBlob(file){
+function resizeImageToBlob(file, maxDim, quality){
+  maxDim = maxDim || 1000; quality = quality || 0.78;
   return new Promise((resolve,reject)=>{
     const reader = new FileReader();
     reader.onload = e => {
       const img = new Image();
       img.onload = () => {
-        const maxDim = 1000;
         let w = img.width, h = img.height;
         if (w >= h && w > maxDim){ h = Math.round(h*maxDim/w); w = maxDim; }
         else if (h > w && h > maxDim){ w = Math.round(w*maxDim/h); h = maxDim; }
         const canvas = document.createElement('canvas');
         canvas.width = w; canvas.height = h;
         canvas.getContext('2d').drawImage(img,0,0,w,h);
-        canvas.toBlob(blob=>resolve(blob), 'image/jpeg', 0.78);
+        canvas.toBlob(blob=>resolve(blob), 'image/jpeg', quality);
       };
       img.onerror = reject;
       img.src = e.target.result;
@@ -202,12 +202,20 @@ function resizeImageToBlob(file){
   });
 }
 async function uploadPhoto(file, userId){
-  const blob = await resizeImageToBlob(file);
+  const blob = await resizeImageToBlob(file, 1000, 0.78);
   const path = `${userId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
   const {error} = await sb.storage.from('cattle-photos').upload(path, blob, {contentType:'image/jpeg'});
   if(error) throw error;
   const {data} = sb.storage.from('cattle-photos').getPublicUrl(path);
   return data.publicUrl;
+}
+async function uploadAvatar(file, userId){
+  const blob = await resizeImageToBlob(file, 400, 0.82);
+  const path = `${userId}/avatar.jpg`;
+  const {error} = await sb.storage.from('avatars').upload(path, blob, {contentType:'image/jpeg', upsert:true});
+  if(error) throw error;
+  const {data} = sb.storage.from('avatars').getPublicUrl(path);
+  return data.publicUrl + '?t=' + Date.now();
 }
 
 /* ---------- Estado ---------- */
@@ -220,6 +228,7 @@ let state = {
 };
 let pendingExistingPhotoUrls = [];
 let pendingNewPhotoFiles = [];
+let pendingAvatarFile = null;
 let mainMapInstance=null, formMapInstance=null, detailMapInstance=null;
 
 /* ---------- Datos ---------- */
@@ -244,7 +253,7 @@ async function loadSession(){
     const {data:contact} = await sb.from('contacts').select('phone').eq('user_id', session.user.id).maybeSingle();
     phone = contact ? (contact.phone||'') : '';
   }catch(e){}
-  state.currentUser = {...profile, phone};
+  state.currentUser = {...profile, phone, username:(session.user.email||'').split('@')[0]};
   if(profile.role==='comprador'){
     const {data:favRows} = await sb.from('favorites').select('cattle_id').eq('user_id', session.user.id);
     state.favorites = (favRows||[]).map(f=>f.cattle_id);
@@ -294,7 +303,7 @@ function renderNav(){
     </div>
     <div class="nav-user">
       ${cu
-        ? `<span>${esc(cu.display_name)}</span><button class="btn btn-outline btn-small" onclick="logout()">Salir</button>`
+        ? `<span style="display:flex;align-items:center;gap:0.5rem;">${cu.avatar_url?`<img src="${cu.avatar_url}" style="width:26px;height:26px;border-radius:50%;object-fit:cover;">`:''}${esc(cu.display_name)}</span><button class="btn btn-outline btn-small" onclick="logout()">Salir</button>`
         : `<button class="btn btn-primary btn-small" onclick="openLogin()">Ingresar</button>`}
     </div>
   </nav>`;
@@ -361,7 +370,7 @@ function renderCard(c){
       <h3>${esc(c.name)}</h3>
       <div class="card-meta">${esc(c.breed)} · ${esc(c.sex)} · ${c.age_months} meses · ${c.weight_kg} kg</div>
       <div class="card-price">${c.price ? '$'+Number(c.price).toLocaleString('es-CO') : 'Precio a convenir'}</div>
-      <div class="card-farm">📍 ${owner?esc(owner.display_name):'Finca'} — ${owner?esc(owner.city||''):''}</div>
+      <div class="card-farm">${owner&&owner.avatar_url?`<img src="${owner.avatar_url}" style="width:16px;height:16px;border-radius:50%;object-fit:cover;vertical-align:-3px;margin-right:3px;">`:'📍 '}${owner?esc(owner.display_name):'Finca'} — ${owner?esc(owner.city||''):''}</div>
     </div>
   </div>`;
 }
@@ -389,7 +398,7 @@ function renderSellerDashboard(u){
         <div style="color:var(--ink-soft);font-size:0.9rem;">Cuenta de vendedor · ${esc(u.city||'')}${u.phone?' · '+esc(u.phone):''}</div>
       </div>
       <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
-        <button class="btn btn-outline btn-small" onclick="openEditProfile()">Editar datos</button>
+        <button class="btn btn-outline btn-small" onclick="openEditProfile()">Mi perfil</button>
         <button class="btn btn-primary btn-small" onclick="openAddCattle()">+ Agregar animal</button>
       </div>
     </div>
@@ -412,7 +421,7 @@ function renderBuyerDashboard(u){
         <h2 style="font-family:var(--font-display);margin:0 0 0.3rem;color:var(--wood-dark);">${esc(u.display_name)}</h2>
         <div style="color:var(--ink-soft);font-size:0.9rem;">Cuenta de comprador${u.city?' · '+esc(u.city):''}${u.phone?' · '+esc(u.phone):''}</div>
       </div>
-      <button class="btn btn-outline btn-small" onclick="openEditProfile()">Editar datos</button>
+      <button class="btn btn-outline btn-small" onclick="openEditProfile()">Mi perfil</button>
     </div>
     <div class="section-header"><h2>Mis favoritos</h2></div>
     ${favCattle.length===0 ? `<div class="empty">Aún no has guardado animales. Toca el ♡ en cualquier animal para guardarlo aquí.</div>` : `<div class="grid">${favCattle.map(renderCard).join('')}</div>`}
@@ -529,31 +538,62 @@ function registerModalHtml(){
     </form>
     <p style="text-align:center;margin-top:1rem;font-size:0.9rem;">¿Ya tienes cuenta? <a href="#" onclick="event.preventDefault();openLogin()" style="color:var(--leather-dark);font-weight:700;">Ingresa</a></p>`;
 }
+function avatarBlockHtml(u){
+  return `<div class="form-row" style="display:flex;align-items:center;gap:1rem;">
+    <div id="avatarPreviewWrap" style="width:64px;height:64px;border-radius:50%;overflow:hidden;background:#e7dcc4;display:flex;align-items:center;justify-content:center;flex-shrink:0;border:1px solid var(--line);">
+      ${u.avatar_url ? `<img src="${u.avatar_url}" style="width:100%;height:100%;object-fit:cover;">` : miniCowSVG}
+    </div>
+    <div>
+      <label style="display:block;font-size:0.82rem;color:var(--ink-soft);margin-bottom:0.3rem;font-weight:600;">Foto de perfil / logo</label>
+      <input type="file" id="ef-avatar" accept="image/*" onchange="handleAvatarPreview(event)">
+    </div>
+  </div>
+  <p style="color:var(--ink-soft);font-size:0.85rem;">Usuario para iniciar sesión: <b>${esc(u.username||'')}</b> (no se puede cambiar)</p>`;
+}
+function passwordBlockHtml(){
+  return `<div class="form-row" style="border-top:1px solid var(--line);padding-top:0.9rem;margin-top:0.3rem;">
+    <label>Nueva contraseña (déjalo en blanco si no la vas a cambiar)</label>
+    <input type="password" id="ef-newpass">
+    <div class="hint">Mínimo 6 caracteres.</div>
+  </div>
+  <div class="form-row"><label>Confirmar nueva contraseña</label><input type="password" id="ef-newpass2"></div>`;
+}
 function editProfileModalHtml(){
   const u = state.currentUser;
   if(u.role==='vendedor'){
-    return `<h2>Editar datos de mi finca</h2>
+    return `<h2>Mi perfil</h2>
       ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
       <form onsubmit="return handleEditProfile(event)">
+        ${avatarBlockHtml(u)}
         <div class="form-row"><label>Nombre de la finca</label><input id="ef-farmname" value="${esc(u.display_name)}" required></div>
         <div class="form-grid-2">
           <div class="form-row"><label>Teléfono / WhatsApp</label><input id="ef-phone" value="${esc(u.phone||'')}"></div>
           <div class="form-row"><label>Vereda / Municipio</label><input id="ef-city" value="${esc(u.city||'')}"></div>
         </div>
         <div class="form-row"><label>Ubicación (toca el mapa para ajustarla)</label><div id="formMap"></div></div>
+        ${passwordBlockHtml()}
         <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;">Guardar cambios</button>
       </form>`;
   }
-  return `<h2>Editar mis datos</h2>
+  return `<h2>Mi perfil</h2>
     ${state.error?`<p class="error-text">${esc(state.error)}</p>`:''}
     <form onsubmit="return handleEditProfile(event)">
+      ${avatarBlockHtml(u)}
       <div class="form-row"><label>Nombre completo</label><input id="ef-name" value="${esc(u.display_name||'')}" required></div>
       <div class="form-grid-2">
         <div class="form-row"><label>Teléfono / WhatsApp</label><input id="ef-phone" value="${esc(u.phone||'')}"></div>
         <div class="form-row"><label>Ciudad / Municipio</label><input id="ef-city" value="${esc(u.city||'')}"></div>
       </div>
+      ${passwordBlockHtml()}
       <button class="btn btn-primary" type="submit" style="width:100%;margin-top:0.5rem;">Guardar cambios</button>
     </form>`;
+}
+function handleAvatarPreview(e){
+  const f = e.target.files[0];
+  if(!f) return;
+  pendingAvatarFile = f;
+  const wrap = document.getElementById('avatarPreviewWrap');
+  if(wrap) wrap.innerHTML = `<img src="${URL.createObjectURL(f)}" style="width:100%;height:100%;object-fit:cover;">`;
 }
 function addCattleModalHtml(){
   const c = state.editingId ? getCattleById(state.editingId) : null;
@@ -647,7 +687,7 @@ function detailModalHtml(){
     </div>
     ${c.description?`<p>${esc(c.description)}</p>`:''}
     <div class="farm-box">
-      <h3 style="font-family:var(--font-display);margin:0 0 0.3rem;color:var(--wood-dark);">${owner?esc(owner.display_name):'Finca'}</h3>
+      <h3 style="font-family:var(--font-display);margin:0 0 0.3rem;color:var(--wood-dark);display:flex;align-items:center;gap:0.5rem;">${owner&&owner.avatar_url?`<img src="${owner.avatar_url}" style="width:28px;height:28px;border-radius:50%;object-fit:cover;">`:''}${owner?esc(owner.display_name):'Finca'}</h3>
       <div style="color:var(--ink-soft);font-size:0.9rem;margin-bottom:0.6rem;">${owner?esc(owner.city||''):''}</div>
       <div id="detailMap"></div>
       <div style="margin-top:0.9rem;">${actionSection}</div>
@@ -752,7 +792,7 @@ function setRegisterRole(role){
   renderApp();
 }
 function openEditProfile(){
-  state.error='';
+  state.error=''; pendingAvatarFile=null;
   if(state.currentUser.role==='vendedor') state.formLatLng={lat:state.currentUser.lat,lng:state.currentUser.lng};
   state.modal='editProfile'; renderApp();
 }
@@ -878,6 +918,12 @@ async function handleLogin(event){
 async function handleEditProfile(event){
   event.preventDefault();
   const u = state.currentUser;
+  const newPass = document.getElementById('ef-newpass').value;
+  const newPass2 = document.getElementById('ef-newpass2').value;
+  if(newPass || newPass2){
+    if(newPass.length<6){ state.error='La nueva contraseña debe tener al menos 6 caracteres.'; renderApp(); return false; }
+    if(newPass!==newPass2){ state.error='Las contraseñas nuevas no coinciden.'; renderApp(); return false; }
+  }
   let updates = {};
   if(u.role==='vendedor'){
     const display_name = document.getElementById('ef-farmname').value.trim();
@@ -888,11 +934,20 @@ async function handleEditProfile(event){
     if(!display_name){ state.error='Tu nombre es obligatorio.'; renderApp(); return false; }
     updates = {display_name, city:document.getElementById('ef-city').value.trim()};
   }
+  if(pendingAvatarFile){
+    try{ updates.avatar_url = await uploadAvatar(pendingAvatarFile, u.id); }
+    catch(e){ state.error='Error subiendo la foto de perfil: '+e.message; renderApp(); return false; }
+  }
   const phone = document.getElementById('ef-phone').value.trim();
   await sb.from('profiles').update(updates).eq('id', u.id);
   const {data:existing} = await sb.from('contacts').select('user_id').eq('user_id', u.id).maybeSingle();
   if(existing) await sb.from('contacts').update({phone}).eq('user_id', u.id);
   else await sb.from('contacts').insert({user_id:u.id, phone});
+  if(newPass){
+    const {error:pwErr} = await sb.auth.updateUser({password:newPass});
+    if(pwErr){ state.error='Los demás datos se guardaron, pero hubo un error cambiando la contraseña: '+pwErr.message; await loadSession(); await loadPublicData(); renderApp(); return false; }
+  }
+  pendingAvatarFile = null;
   await loadSession();
   await loadPublicData();
   state.modal=null;
