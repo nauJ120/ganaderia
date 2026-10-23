@@ -303,7 +303,7 @@ function getFilteredCattle(){
     if(f.maxAge!=='' && c.age_months > Number(f.maxAge)) return false;
     if(f.minWeight!=='' && c.weight_kg < Number(f.minWeight)) return false;
     if(f.maxWeight!=='' && c.weight_kg > Number(f.maxWeight)) return false;
-    if(f.maxPrice!=='' && c.price && c.price > Number(f.maxPrice)) return false;
+    if(f.maxPrice!=='' && c.price && c.price > Number(f.maxPrice)*1000000) return false;
     if(f.q){
       const hay = `${c.name} ${c.breed} ${c.genetic_line||''} ${c.registro||''}`.toLowerCase();
       if(!hay.includes(f.q)) return false;
@@ -404,7 +404,7 @@ function renderFilters(){
       <div class="field"><label>Edad máx. (meses)</label><input type="number" id="f-maxAge" value="${f.maxAge}" min="0"></div>
       <div class="field"><label>Peso mín. (kg)</label><input type="number" id="f-minWeight" value="${f.minWeight}" min="0"></div>
       <div class="field"><label>Peso máx. (kg)</label><input type="number" id="f-maxWeight" value="${f.maxWeight}" min="0"></div>
-      <div class="field"><label>Precio máx. (COP)</label><input type="number" id="f-maxPrice" value="${f.maxPrice}" min="0"></div>
+      <div class="field"><label>Precio máx. (millones COP)</label><input type="number" id="f-maxPrice" value="${f.maxPrice}" min="0" step="0.1" placeholder="ej. 5"></div>
     </div>
     <div class="filters-actions">
       <button class="btn btn-primary btn-small" onclick="applyFilters()">Aplicar filtros</button>
@@ -719,7 +719,7 @@ function addCattleModalHtml(){
       </div>
       <div class="form-grid-2">
         <div class="form-row"><label>Registro / Hierro (opcional)</label><input id="c-registro" value="${c?esc(c.registro||''):''}"></div>
-        <div class="form-row"><label>Precio en COP (opcional)</label><input type="number" id="c-price" min="0" value="${c&&c.price?c.price:''}"></div>
+        <div class="form-row"><label>Precio en millones de COP (opcional)</label><input type="number" id="c-price" min="0" step="0.1" placeholder="ej. 3.5 = $3.500.000" value="${c&&c.price?(c.price/1000000):''}"></div>
       </div>
       <div class="form-row"><label>Descripción</label><textarea id="c-desc" rows="3">${c?esc(c.description||''):''}</textarea></div>
       <div class="form-row"><label>Video (opcional — link de YouTube o similar)</label><input id="c-video" value="${c?esc(c.video_url||''):''}" placeholder="https://..."></div>
@@ -1097,7 +1097,7 @@ async function handleSaveCattle(event){
   const weight_kg = Number(document.getElementById('c-weight').value);
   const registro = document.getElementById('c-registro').value.trim();
   const priceVal = document.getElementById('c-price').value;
-  const price = priceVal ? Number(priceVal) : null;
+  const price = priceVal ? Math.round(Number(priceVal)*1000000) : null;
   const description = document.getElementById('c-desc').value.trim();
   if(!name || !breed || isNaN(age_months) || isNaN(weight_kg)){ state.error='Completa los campos obligatorios.'; renderApp(); return false; }
   if(listing_type==='Lote' && !quantity){ state.error='Indica cuántos animales tiene el lote.'; renderApp(); return false; }
